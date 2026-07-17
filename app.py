@@ -276,7 +276,7 @@ elif pagina == "👥 Clientes":
     st.title("Clientes / Dentistas")
 
     # URL base del portal — local por ahora, reemplazar con dominio Cloudflare al hacer deploy
-    PORTAL_BASE = "http://localhost:8502"
+    PORTAL_BASE = "http://portal.odontomax.mzvic.xyz"
 
     with st.expander("➕ Agregar nuevo cliente"):
         with st.form("form_cliente", clear_on_submit=True):
