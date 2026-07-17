@@ -1,7 +1,9 @@
 import streamlit as st
 from datetime import date
+import calendar
 import os
 import database as db
+import pdfs
 
 st.set_page_config(
     page_title="Laboratorio Dental",
@@ -19,27 +21,30 @@ COLORES_ESTADO = {
     "cobrado":    "✅",
 }
 
+MESES_ES = [
+    "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+]
+
 if "detalle_id" not in st.session_state:
     st.session_state.detalle_id = None
 
 
 def titulo_trabajo(t):
-    """Texto corto para listas: OT, nombre custom (o tipo), paciente, estado."""
-    ot = db.numero_ot(t["id"])
+    ot    = db.numero_ot(t["id"])
     emoji = COLORES_ESTADO.get(t["estado"], "⚪")
     nombre = t["nombre"] if t["nombre"] else t["tipo_trabajo"]
-    paciente_label = f" · 👤 {t['paciente']}" if t["paciente"] else ""
-    vencido = ""
+    pac   = f" · 👤 {t['paciente']}" if t["paciente"] else ""
+    tard  = ""
     if (t["fecha_entrega"]
             and t["fecha_entrega"] < str(date.today())
             and t["estado"] not in ("entregado", "cobrado")):
-        vencido = " ⚠️"
-    return f"{emoji} {ot} — {nombre} ({t['cliente_nombre']}){paciente_label}{vencido}"
+        tard = " ⚠️"
+    return f"{emoji} {ot} — {nombre} ({t['cliente_nombre']}){pac}{tard}"
 
 
 def fila_trabajo(t):
-    """Fila clickeable en una lista: botón que abre el detalle."""
-    col_btn, col_info = st.columns([1, 5])
+    col_btn, col_info = st.columns([1, 6])
     with col_btn:
         if st.button("Abrir", key=f"abrir_{t['id']}"):
             st.session_state.detalle_id = t["id"]
@@ -49,7 +54,6 @@ def fila_trabajo(t):
 
 
 def vista_detalle(trabajo_id):
-    """Página completa de un trabajo: info + materiales, en pestañas."""
     t = db.obtener_trabajo(trabajo_id)
     if not t:
         st.error("Esa orden ya no existe.")
@@ -64,9 +68,9 @@ def vista_detalle(trabajo_id):
     nombre_mostrar = t["nombre"] if t["nombre"] else t["tipo_trabajo"]
     st.title(f"{ot} — {nombre_mostrar}")
 
-    tab_info, tab_materiales = st.tabs(["📋 Información", "📦 Elementos utilizados"])
+    tab_info, tab_mat = st.tabs(["📋 Información", "📦 Elementos utilizados"])
 
-    # ───── TAB INFORMACIÓN ─────
+    # ─── TAB INFORMACIÓN ───────────────────────────────────────────────────────
     with tab_info:
         col1, col2, col3, col4 = st.columns(4)
         col1.write(f"**Cliente:** {t['cliente_nombre']}")
@@ -86,20 +90,23 @@ def vista_detalle(trabajo_id):
         if t["foto_path"] and os.path.exists(t["foto_path"]):
             st.image(t["foto_path"], caption="Foto del trabajo", width=320)
 
-        foto_nueva = st.file_uploader("Subir / reemplazar foto", type=["jpg", "jpeg", "png"], key=f"foto_{t['id']}")
+        foto_nueva = st.file_uploader(
+            "Subir / reemplazar foto", type=["jpg", "jpeg", "png"],
+            key=f"foto_{t['id']}"
+        )
         if foto_nueva:
-            extension = foto_nueva.name.rsplit(".", 1)[-1].lower()
-            db.guardar_foto(t["id"], foto_nueva.read(), extension)
+            ext = foto_nueva.name.rsplit(".", 1)[-1].lower()
+            db.guardar_foto(t["id"], foto_nueva.read(), ext)
             st.success("Foto guardada.")
             st.rerun()
 
         st.divider()
 
-        col_estado, col_pago = st.columns(2)
+        col_estado, col_cobro, col_pdf = st.columns(3)
+
         with col_estado:
             nuevo_estado = st.selectbox(
-                "Estado",
-                db.ESTADOS,
+                "Estado", db.ESTADOS,
                 index=db.ESTADOS.index(t["estado"]),
                 key=f"estado_{t['id']}",
             )
@@ -107,7 +114,8 @@ def vista_detalle(trabajo_id):
                 if st.button("Actualizar estado", key=f"btn_estado_{t['id']}"):
                     db.actualizar_estado(t["id"], nuevo_estado)
                     st.rerun()
-        with col_pago:
+
+        with col_cobro:
             if t["estado"] == "entregado" and t["precio"]:
                 st.write(f"**Cobrar ${t['precio']:,.0f}**")
                 if st.button("✅ Marcar como cobrado", key=f"cobrar_{t['id']}"):
@@ -115,10 +123,21 @@ def vista_detalle(trabajo_id):
                     st.success("Pago registrado.")
                     st.rerun()
 
-    # ───── TAB MATERIALES ─────
-    with tab_materiales:
-        st.subheader("Elementos / materiales utilizados")
+        with col_pdf:
+            st.write("**Imprimir OT**")
+            materiales = db.obtener_materiales(t["id"])
+            pdf_bytes = pdfs.generar_ot(t, materiales if materiales else None)
+            st.download_button(
+                label="📄 Descargar OT en PDF",
+                data=pdf_bytes,
+                file_name=f"OT-{t['id']:04d}.pdf",
+                mime="application/pdf",
+                key=f"pdf_ot_{t['id']}",
+            )
 
+    # ─── TAB MATERIALES ────────────────────────────────────────────────────────
+    with tab_mat:
+        st.subheader("Elementos / materiales utilizados")
         materiales = db.obtener_materiales(t["id"])
         total = db.costo_total_materiales(t["id"])
 
@@ -134,31 +153,27 @@ def vista_detalle(trabajo_id):
                     st.rerun()
             st.markdown(f"**Costo total en materiales: ${total:,.0f}**")
         else:
-            st.info("Aún no se ha registrado ningún material para este trabajo.")
+            st.info("Aún no se ha registrado ningún material.")
 
         st.divider()
         st.write("**Agregar elemento**")
-        with st.form(f"form_material_{t['id']}", clear_on_submit=True):
+        with st.form(f"form_mat_{t['id']}", clear_on_submit=True):
             c1, c2, c3, c4 = st.columns(4)
-            nombre_mat = c1.text_input("Nombre (ej: Resina, Yeso, Metal)")
-            cantidad   = c2.number_input("Cantidad", min_value=0.0, step=0.5)
-            unidad     = c3.selectbox("Unidad", ["g", "ml", "unidad", "kit", "otro"])
-            costo      = c4.number_input("Costo ($)", min_value=0, step=500)
+            nom_m   = c1.text_input("Nombre (ej: Resina, Yeso)")
+            cant    = c2.number_input("Cantidad", min_value=0.0, step=0.5)
+            unidad  = c3.selectbox("Unidad", ["g", "ml", "unidad", "kit", "otro"])
+            costo_m = c4.number_input("Costo ($)", min_value=0, step=500)
             if st.form_submit_button("Agregar"):
-                if nombre_mat.strip():
-                    db.agregar_material(t["id"], nombre_mat, cantidad, unidad, costo)
-                    st.success(f"{nombre_mat} agregado.")
+                if nom_m.strip():
+                    db.agregar_material(t["id"], nom_m, cant, unidad, costo_m)
                     st.rerun()
                 else:
-                    st.error("El nombre del material no puede estar vacío.")
+                    st.error("El nombre no puede estar vacío.")
 
 
-# ──────────────────────────────────────────
-# NAVEGACIÓN
-# ──────────────────────────────────────────
+# ── NAVEGACIÓN ─────────────────────────────────────────────────────────────────
 
 st.sidebar.title("🦷 Lab. Dental")
-
 st.sidebar.markdown("---")
 st.sidebar.markdown("**Buscar orden**")
 busqueda = st.sidebar.text_input(
@@ -166,16 +181,16 @@ busqueda = st.sidebar.text_input(
     placeholder="OT-0003 o García",
     label_visibility="collapsed",
 )
-
 pagina = st.sidebar.radio(
     "Ir a",
-    ["📊 Dashboard", "➕ Nueva orden", "👥 Clientes", "📋 Historial"],
+    ["📊 Dashboard", "➕ Nueva orden", "👥 Clientes", "📋 Historial", "💰 Cobros"],
 )
 
-# Si hay un detalle abierto, tiene prioridad sobre todo lo demás
+# ── DETALLE (prioridad sobre todo) ─────────────────────────────────────────────
 if st.session_state.detalle_id is not None:
     vista_detalle(st.session_state.detalle_id)
 
+# ── BÚSQUEDA ───────────────────────────────────────────────────────────────────
 elif busqueda.strip():
     st.title(f"Resultados para «{busqueda}»")
     resultados = db.buscar_trabajos(busqueda)
@@ -184,8 +199,9 @@ elif busqueda.strip():
         for t in resultados:
             fila_trabajo(t)
     else:
-        st.info("No se encontraron órdenes con ese criterio.")
+        st.info("No se encontraron órdenes.")
 
+# ── DASHBOARD ──────────────────────────────────────────────────────────────────
 elif pagina == "📊 Dashboard":
     st.title("Dashboard")
     resumen = db.resumen_general()
@@ -214,12 +230,13 @@ elif pagina == "📊 Dashboard":
         for t in trabajos:
             fila_trabajo(t)
 
+# ── NUEVA ORDEN ────────────────────────────────────────────────────────────────
 elif pagina == "➕ Nueva orden":
     st.title("Nueva orden de trabajo")
     clientes = db.obtener_clientes()
 
     if not clientes:
-        st.warning("Primero agrega un cliente en la sección 👥 Clientes.")
+        st.warning("Primero agrega un cliente en 👥 Clientes.")
     else:
         opciones = {c["nombre"]: c["id"] for c in clientes}
 
@@ -238,7 +255,7 @@ elif pagina == "➕ Nueva orden":
             enviado        = st.form_submit_button("Guardar orden")
 
         if enviado:
-            trabajo_id = db.agregar_trabajo(
+            tid = db.agregar_trabajo(
                 cliente_id    = opciones[cliente_nombre],
                 nombre        = nombre_trabajo,
                 paciente      = paciente,
@@ -250,14 +267,16 @@ elif pagina == "➕ Nueva orden":
                 notas         = notas,
             )
             if foto_archivo:
-                extension = foto_archivo.name.rsplit(".", 1)[-1].lower()
-                db.guardar_foto(trabajo_id, foto_archivo.read(), extension)
+                ext = foto_archivo.name.rsplit(".", 1)[-1].lower()
+                db.guardar_foto(tid, foto_archivo.read(), ext)
+            st.success(f"Orden **{db.numero_ot(tid)}** para **{cliente_nombre}** guardada.")
 
-            ot = db.numero_ot(trabajo_id)
-            st.success(f"Orden **{ot}** para **{cliente_nombre}** guardada correctamente.")
-
+# ── CLIENTES ───────────────────────────────────────────────────────────────────
 elif pagina == "👥 Clientes":
     st.title("Clientes / Dentistas")
+
+    # URL base del portal — local por ahora, reemplazar con dominio Cloudflare al hacer deploy
+    PORTAL_BASE = "http://localhost:8502"
 
     with st.expander("➕ Agregar nuevo cliente"):
         with st.form("form_cliente", clear_on_submit=True):
@@ -266,28 +285,30 @@ elif pagina == "👥 Clientes":
             notas    = st.text_input("Notas (opcional)")
             if st.form_submit_button("Guardar cliente"):
                 if nombre.strip():
-                    db.agregar_cliente(nombre, telefono, notas)
+                    token = db.agregar_cliente(nombre, telefono, notas)
                     st.success(f"Cliente **{nombre}** agregado.")
+                    st.info(f"Link del portal: `{PORTAL_BASE}/?token={token}`")
                     st.rerun()
                 else:
                     st.error("El nombre no puede estar vacío.")
 
     st.divider()
-    clientes = db.obtener_clientes()
-    if not clientes:
-        st.info("Aún no hay clientes registrados.")
-    else:
-        for c in clientes:
-            st.write(f"**{c['nombre']}**" + (f" — {c['telefono']}" if c["telefono"] else ""))
+    for c in db.obtener_clientes():
+        with st.expander(f"**{c['nombre']}**" + (f" — {c['telefono']}" if c["telefono"] else "")):
             if c["notas"]:
                 st.caption(c["notas"])
 
+            link = f"{PORTAL_BASE}/?token={c['token']}"
+            st.markdown("**Link del portal para esta clínica:**")
+            st.code(link, language=None)
+            st.caption("Mándale este link por WhatsApp. Solo esta clínica puede usarlo.")
+
+# ── HISTORIAL ──────────────────────────────────────────────────────────────────
 elif pagina == "📋 Historial":
     st.title("Historial de órdenes")
 
     clientes      = db.obtener_clientes()
-    nombres       = ["Todos"] + [c["nombre"] for c in clientes]
-    filtro        = st.selectbox("Filtrar por cliente", nombres)
+    filtro        = st.selectbox("Filtrar por cliente", ["Todos"] + [c["nombre"] for c in clientes])
     filtro_estado = st.multiselect("Filtrar por estado", db.ESTADOS, default=db.ESTADOS)
 
     trabajos = db.obtener_todos_trabajos()
@@ -302,3 +323,62 @@ elif pagina == "📋 Historial":
         st.write(f"**{len(trabajos)} orden(es)**")
         for t in trabajos:
             fila_trabajo(t)
+
+# ── COBROS ─────────────────────────────────────────────────────────────────────
+elif pagina == "💰 Cobros":
+    st.title("Órdenes de cobro mensual")
+    st.write("Genera un PDF por dentista con todos los trabajos entregados en el mes.")
+
+    clientes = db.obtener_clientes()
+    if not clientes:
+        st.info("No hay clientes registrados.")
+    else:
+        col1, col2, col3 = st.columns(3)
+        hoy = date.today()
+
+        cliente_sel = col1.selectbox(
+            "Dentista",
+            [c["nombre"] for c in clientes],
+        )
+        mes_sel = col2.selectbox(
+            "Mes",
+            list(range(1, 13)),
+            index=hoy.month - 1,
+            format_func=lambda m: MESES_ES[m],
+        )
+        anio_sel = col3.number_input(
+            "Año", min_value=2020, max_value=2030,
+            value=hoy.year, step=1,
+        )
+
+        cliente_obj = next(c for c in clientes if c["nombre"] == cliente_sel)
+        trabajos_mes = db.trabajos_por_cliente_mes(cliente_obj["id"], anio_sel, mes_sel)
+
+        st.divider()
+
+        if not trabajos_mes:
+            st.info(f"No hay trabajos entregados de **{cliente_sel}** en {MESES_ES[mes_sel]} {anio_sel}.")
+        else:
+            total = sum(t["precio"] or 0 for t in trabajos_mes)
+            pendiente = sum(t["precio"] or 0 for t in trabajos_mes if t["estado"] == "entregado")
+
+            col_a, col_b, col_c = st.columns(3)
+            col_a.metric("Trabajos", len(trabajos_mes))
+            col_b.metric("Total período", f"${total:,.0f}")
+            col_c.metric("Saldo pendiente", f"${pendiente:,.0f}")
+
+            st.write(f"**{len(trabajos_mes)} trabajo(s) de {cliente_sel} en {MESES_ES[mes_sel]} {anio_sel}:**")
+            for t in trabajos_mes:
+                emoji = COLORES_ESTADO.get(t["estado"], "⚪")
+                precio_str = f"${t['precio']:,.0f}" if t["precio"] else "—"
+                st.write(f"{emoji} {db.numero_ot(t['id'])} — {t['nombre'] or t['tipo_trabajo']} · {t['paciente'] or '—'} · {precio_str}")
+
+            st.divider()
+            mes_label = f"{MESES_ES[mes_sel]} {anio_sel}"
+            pdf_bytes = pdfs.generar_cobro(cliente_sel, trabajos_mes, mes_label)
+            st.download_button(
+                label=f"📄 Descargar orden de cobro — {cliente_sel} — {mes_label}",
+                data=pdf_bytes,
+                file_name=f"cobro_{cliente_sel.replace(' ', '_')}_{anio_sel}_{mes_sel:02d}.pdf",
+                mime="application/pdf",
+            )

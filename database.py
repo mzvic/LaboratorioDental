@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import uuid
 from datetime import date
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", "laboratorio.db")
@@ -8,14 +9,30 @@ FOTOS_DIR = os.path.join(os.path.dirname(__file__), "fotos")
 ESTADOS = ["pendiente", "en_proceso", "listo", "entregado", "cobrado"]
 
 TIPOS_TRABAJO = [
-    "Prótesis removible superior",
-    "Prótesis removible inferior",
-    "Prótesis total superior",
-    "Prótesis total inferior",
-    "Corona metal-porcelana",
-    "Corona zirconio",
-    "Puente fijo",
-    "Otro",
+    # --- PRÓTESIS REMOVIBLE ---
+    "Prótesis Removible Acrílica (Parcial)",
+    "Prótesis Removible Acrílica (Total)",
+    "Prótesis Metálica (Esquelético / Cromo)",
+    "Prótesis Flexible (Deflex / Valplast)",
+    "Provisorio de Acrílico (Removible)",
+    
+    # --- PRÓTESIS FIJA Y ESTÉTICA ---
+    "Corona Metal-Porcelana",
+    "Corona Zirconio (Monolítica)",
+    "Corona Zirconio (Estratificada)",
+    "Corona Disilicato de Litio (e.max)",
+    "Carilla de Porcelana / Disilicato",
+    "Incrustación (Inlay / Onlay / Overlay)",
+    "Puente Fijo (Metal-Porcelana)",
+    "Puente Fijo (Zirconio)",
+    
+    # --- ORTODONCIA, PLANOS Y OTROS ---
+    "Plano de Alivio Oclusal (Bruxismo / Miorrelajante)",
+    "Aparato de Ortodoncia (Plaquita activa)",
+    "Perno Muñón Colado (PPR / Metálico)",
+    "Cubeta Individual / Rodete de Cera",
+    "Reparación / Rebase / Agregado de Diente",
+    "Otro"
 ]
 
 
@@ -26,7 +43,6 @@ def conectar():
 
 
 def inicializar_db():
-    """Crea las tablas si no existen y agrega columnas nuevas si falta alguna."""
     os.makedirs(FOTOS_DIR, exist_ok=True)
     conn = conectar()
     c = conn.cursor()
@@ -36,24 +52,25 @@ def inicializar_db():
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
             nombre    TEXT NOT NULL,
             telefono  TEXT,
-            notas     TEXT
+            notas     TEXT,
+            token     TEXT UNIQUE
         )
     """)
 
     c.execute("""
         CREATE TABLE IF NOT EXISTS trabajos (
-            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-            cliente_id            INTEGER NOT NULL,
-            nombre                TEXT,
-            paciente              TEXT,
-            tipo_trabajo          TEXT NOT NULL,
-            descripcion           TEXT,
-            fecha_ingreso         TEXT NOT NULL,
-            fecha_entrega         TEXT,
-            precio                REAL,
-            estado                TEXT NOT NULL DEFAULT 'pendiente',
-            foto_path             TEXT,
-            notas                 TEXT,
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id     INTEGER NOT NULL,
+            nombre         TEXT,
+            paciente       TEXT,
+            tipo_trabajo   TEXT NOT NULL,
+            descripcion    TEXT,
+            fecha_ingreso  TEXT NOT NULL,
+            fecha_entrega  TEXT,
+            precio         REAL,
+            estado         TEXT NOT NULL DEFAULT 'pendiente',
+            foto_path      TEXT,
+            notas          TEXT,
             FOREIGN KEY (cliente_id) REFERENCES clientes(id)
         )
     """)
@@ -71,47 +88,54 @@ def inicializar_db():
 
     c.execute("""
         CREATE TABLE IF NOT EXISTS materiales (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            trabajo_id   INTEGER NOT NULL,
-            nombre       TEXT NOT NULL,
-            cantidad     REAL,
-            unidad       TEXT,
-            costo        REAL,
-            fecha        TEXT NOT NULL,
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            trabajo_id  INTEGER NOT NULL,
+            nombre      TEXT NOT NULL,
+            cantidad    REAL,
+            unidad      TEXT,
+            costo       REAL,
+            fecha       TEXT NOT NULL,
             FOREIGN KEY (trabajo_id) REFERENCES trabajos(id)
         )
     """)
 
-    # Migración: agrega columnas nuevas si la tabla ya existía sin ellas
-    columnas_existentes = [r[1] for r in c.execute("PRAGMA table_info(trabajos)").fetchall()]
-    if "paciente" not in columnas_existentes:
-        c.execute("ALTER TABLE trabajos ADD COLUMN paciente TEXT")
-    if "foto_path" not in columnas_existentes:
-        c.execute("ALTER TABLE trabajos ADD COLUMN foto_path TEXT")
-    if "nombre" not in columnas_existentes:
-        c.execute("ALTER TABLE trabajos ADD COLUMN nombre TEXT")
+    # Migración: columnas nuevas en trabajos
+    cols = [r[1] for r in c.execute("PRAGMA table_info(trabajos)").fetchall()]
+    for col in ["paciente", "foto_path", "nombre"]:
+        if col not in cols:
+            c.execute(f"ALTER TABLE trabajos ADD COLUMN {col} TEXT")
+
+    # Migración: token en clientes
+    cols_cli = [r[1] for r in c.execute("PRAGMA table_info(clientes)").fetchall()]
+    if "token" not in cols_cli:
+        c.execute("ALTER TABLE clientes ADD COLUMN token TEXT")
+
+    # Backfill: clientes existentes sin token
+    sin_token = c.execute("SELECT id FROM clientes WHERE token IS NULL").fetchall()
+    for row in sin_token:
+        c.execute("UPDATE clientes SET token = ? WHERE id = ?",
+                  (str(uuid.uuid4()), row[0]))
 
     conn.commit()
     conn.close()
 
 
 def numero_ot(trabajo_id):
-    """Formatea el ID como número de OT visible: OT-0042"""
     return f"OT-{trabajo_id:04d}"
 
 
-# ──────────────────────────────────────────
-# CLIENTES
-# ──────────────────────────────────────────
+# ── CLIENTES ──────────────────────────────────────────────────────────────────
 
 def agregar_cliente(nombre, telefono="", notas=""):
+    token = str(uuid.uuid4())
     conn = conectar()
     conn.execute(
-        "INSERT INTO clientes (nombre, telefono, notas) VALUES (?, ?, ?)",
-        (nombre.strip(), telefono.strip(), notas.strip()),
+        "INSERT INTO clientes (nombre, telefono, notas, token) VALUES (?, ?, ?, ?)",
+        (nombre.strip(), telefono.strip(), notas.strip(), token),
     )
     conn.commit()
     conn.close()
+    return token
 
 
 def obtener_clientes():
@@ -121,23 +145,33 @@ def obtener_clientes():
     return rows
 
 
-# ──────────────────────────────────────────
-# TRABAJOS
-# ──────────────────────────────────────────
+def obtener_cliente_por_token(token):
+    conn = conectar()
+    row = conn.execute(
+        "SELECT * FROM clientes WHERE token = ?", (token,)
+    ).fetchone()
+    conn.close()
+    return row
+
+
+# ── TRABAJOS ──────────────────────────────────────────────────────────────────
 
 def agregar_trabajo(cliente_id, nombre, paciente, tipo, descripcion,
                     fecha_ingreso, fecha_entrega, precio, notas=""):
     conn = conectar()
     conn.execute(
         """INSERT INTO trabajos
-           (cliente_id, nombre, paciente, tipo_trabajo, descripcion, fecha_ingreso,
-            fecha_entrega, precio, estado, notas)
+           (cliente_id, nombre, paciente, tipo_trabajo, descripcion,
+            fecha_ingreso, fecha_entrega, precio, estado, notas)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', ?)""",
-        (cliente_id, nombre.strip() if nombre else None,
+        (cliente_id,
+         nombre.strip() if nombre else None,
          paciente.strip() if paciente else None,
-         tipo, descripcion.strip(),
-         str(fecha_ingreso), str(fecha_entrega) if fecha_entrega else None,
-         precio if precio else None, notas.strip()),
+         tipo, descripcion.strip() if descripcion else "",
+         str(fecha_ingreso),
+         str(fecha_entrega) if fecha_entrega else None,
+         precio if precio else None,
+         notas.strip()),
     )
     trabajo_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.commit()
@@ -155,20 +189,6 @@ def obtener_trabajo(trabajo_id):
     """, (trabajo_id,)).fetchone()
     conn.close()
     return row
-
-
-def guardar_foto(trabajo_id, archivo_bytes, extension):
-    """Guarda la foto en disco y actualiza la ruta en la BD."""
-    os.makedirs(FOTOS_DIR, exist_ok=True)
-    nombre_archivo = f"{trabajo_id}.{extension}"
-    ruta = os.path.join(FOTOS_DIR, nombre_archivo)
-    with open(ruta, "wb") as f:
-        f.write(archivo_bytes)
-    conn = conectar()
-    conn.execute("UPDATE trabajos SET foto_path = ? WHERE id = ?", (ruta, trabajo_id))
-    conn.commit()
-    conn.close()
-    return ruta
 
 
 def obtener_trabajos_activos():
@@ -197,11 +217,8 @@ def obtener_todos_trabajos():
 
 
 def buscar_trabajos(texto):
-    """Busca por número de OT (ej: 42 o OT-0042) o por nombre de paciente."""
     conn = conectar()
     texto = texto.strip()
-
-    # Si el texto es un número (con o sin prefijo OT-), busca por ID
     id_busqueda = None
     if texto.upper().startswith("OT-"):
         try:
@@ -217,15 +234,13 @@ def buscar_trabajos(texto):
     if id_busqueda is not None:
         rows = conn.execute("""
             SELECT t.*, c.nombre AS cliente_nombre
-            FROM trabajos t
-            JOIN clientes c ON t.cliente_id = c.id
+            FROM trabajos t JOIN clientes c ON t.cliente_id = c.id
             WHERE t.id = ?
         """, (id_busqueda,)).fetchall()
     else:
         rows = conn.execute("""
             SELECT t.*, c.nombre AS cliente_nombre
-            FROM trabajos t
-            JOIN clientes c ON t.cliente_id = c.id
+            FROM trabajos t JOIN clientes c ON t.cliente_id = c.id
             WHERE t.paciente LIKE ?
             ORDER BY t.fecha_ingreso DESC
         """, (f"%{texto}%",)).fetchall()
@@ -241,9 +256,19 @@ def actualizar_estado(trabajo_id, nuevo_estado):
     conn.close()
 
 
-# ──────────────────────────────────────────
-# PAGOS
-# ──────────────────────────────────────────
+def guardar_foto(trabajo_id, archivo_bytes, extension):
+    os.makedirs(FOTOS_DIR, exist_ok=True)
+    ruta = os.path.join(FOTOS_DIR, f"{trabajo_id}.{extension}")
+    with open(ruta, "wb") as f:
+        f.write(archivo_bytes)
+    conn = conectar()
+    conn.execute("UPDATE trabajos SET foto_path = ? WHERE id = ?", (ruta, trabajo_id))
+    conn.commit()
+    conn.close()
+    return ruta
+
+
+# ── PAGOS ─────────────────────────────────────────────────────────────────────
 
 def registrar_pago(trabajo_id, monto, fecha, notas=""):
     conn = conectar()
@@ -260,11 +285,9 @@ def deuda_por_cliente():
     conn = conectar()
     rows = conn.execute("""
         SELECT c.nombre, SUM(t.precio) AS deuda
-        FROM trabajos t
-        JOIN clientes c ON t.cliente_id = c.id
+        FROM trabajos t JOIN clientes c ON t.cliente_id = c.id
         WHERE t.estado = 'entregado'
-        GROUP BY c.id
-        HAVING deuda > 0
+        GROUP BY c.id HAVING deuda > 0
         ORDER BY deuda DESC
     """).fetchall()
     conn.close()
@@ -274,7 +297,7 @@ def deuda_por_cliente():
 def resumen_general():
     conn = conectar()
     activos = conn.execute(
-        "SELECT COUNT(*) FROM trabajos WHERE estado NOT IN ('cobrado')"
+        "SELECT COUNT(*) FROM trabajos WHERE estado != 'cobrado'"
     ).fetchone()[0]
     listos = conn.execute(
         "SELECT COUNT(*) FROM trabajos WHERE estado = 'listo'"
@@ -287,23 +310,16 @@ def resumen_general():
         WHERE strftime('%Y-%m', p.fecha) = strftime('%Y-%m', 'now')
     """).fetchone()[0]
     conn.close()
-    return {
-        "activos": activos,
-        "listos_para_entregar": listos,
-        "deuda_total": deuda,
-        "cobrado_este_mes": cobrado_mes,
-    }
+    return {"activos": activos, "listos_para_entregar": listos,
+            "deuda_total": deuda, "cobrado_este_mes": cobrado_mes}
 
 
-# ──────────────────────────────────────────
-# MATERIALES / ELEMENTOS UTILIZADOS
-# ──────────────────────────────────────────
+# ── MATERIALES ────────────────────────────────────────────────────────────────
 
 def agregar_material(trabajo_id, nombre, cantidad, unidad, costo, fecha=None):
     conn = conectar()
     conn.execute(
-        """INSERT INTO materiales (trabajo_id, nombre, cantidad, unidad, costo, fecha)
-           VALUES (?, ?, ?, ?, ?, ?)""",
+        "INSERT INTO materiales (trabajo_id, nombre, cantidad, unidad, costo, fecha) VALUES (?, ?, ?, ?, ?, ?)",
         (trabajo_id, nombre.strip(), cantidad, unidad,
          costo if costo else None, str(fecha or date.today())),
     )
@@ -335,3 +351,21 @@ def costo_total_materiales(trabajo_id):
     ).fetchone()[0]
     conn.close()
     return total
+
+
+# ── COBROS ────────────────────────────────────────────────────────────────────
+
+def trabajos_por_cliente_mes(cliente_id, anio, mes):
+    """Trabajos entregados o cobrados de un cliente en un mes dado."""
+    conn = conectar()
+    rows = conn.execute("""
+        SELECT t.*, c.nombre AS cliente_nombre
+        FROM trabajos t JOIN clientes c ON t.cliente_id = c.id
+        WHERE t.cliente_id = ?
+          AND t.estado IN ('entregado', 'cobrado')
+          AND strftime('%Y', t.fecha_entrega) = ?
+          AND strftime('%m', t.fecha_entrega) = ?
+        ORDER BY t.fecha_entrega ASC
+    """, (cliente_id, str(anio), f"{mes:02d}")).fetchall()
+    conn.close()
+    return rows
