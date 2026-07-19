@@ -68,8 +68,7 @@ def vista_detalle(trabajo_id):
     nombre_mostrar = t["nombre"] if t["nombre"] else t["tipo_trabajo"]
     st.title(f"{ot} — {nombre_mostrar}")
 
-    tab_info, tab_mat = st.tabs(["📋 Información", "📦 Elementos utilizados"])
-
+    tab_info, tab_mat, tab_edit = st.tabs(["📋 Información", "📦 Elementos utilizados", "✏️ Editar Orden"])
     # ─── TAB INFORMACIÓN ───────────────────────────────────────────────────────
     with tab_info:
         col1, col2, col3, col4 = st.columns(4)
@@ -169,6 +168,57 @@ def vista_detalle(trabajo_id):
                     st.rerun()
                 else:
                     st.error("El nombre no puede estar vacío.")
+    with tab_edit:
+        st.subheader(f"Modificar datos de la {ot}")
+    
+        # Formatear la fecha de texto de la DB a un objeto date amigable para Streamlit
+        from datetime import datetime
+        fecha_entrega_actual = None
+        if t["fecha_entrega"]:
+            try:
+                fecha_entrega_actual = datetime.strptime(t["fecha_entrega"], "%Y-%m-%d").date()
+            except ValueError:
+                fecha_entrega_actual = None
+
+        with st.form(f"form_editar_ot_{t['id']}", clear_on_submit=False):
+            edit_nombre   = st.text_input("Nombre del trabajo (ej: Corona Sra. González)", value=t["nombre"] or "")
+            edit_paciente = st.text_input("Nombre del paciente", value=t["paciente"] or "")
+            
+            # Buscar el índice del tipo de trabajo actual para pre-seleccionarlo
+            idx_tipo = db.TIPOS_TRABAJO.index(t["tipo_trabajo"]) if t["tipo_trabajo"] in db.TIPOS_TRABAJO else 0
+            edit_tipo = st.selectbox("Tipo de trabajo", db.TIPOS_TRABAJO, index=idx_tipo)
+            
+            edit_desc = st.text_area("Descripción (diente, materiales, instrucciones)", value=t["descripcion"] or "", height=80)
+            
+            edit_fecha_entrega = st.date_input("Fecha de entrega prometida", value=fecha_entrega_actual)
+            
+            # Aseguramos el casteo correcto del precio para el spinner numérico
+            precio_actual = int(t["precio"]) if t["precio"] else 0
+            edit_precio = st.number_input("Precio ($)", min_value=0, step=1000, value=precio_actual)
+            
+            # Buscar el índice del estado actual
+            idx_estado = db.ESTADOS.index(t["estado"]) if t["estado"] in db.ESTADOS else 0
+            edit_estado = st.selectbox("Estado de la orden", db.ESTADOS, index=idx_estado)
+            
+            edit_notas = st.text_input("Notas internas (opcional)", value=t["notas"] or "")
+            
+            guardar_cambios = st.form_submit_button("💾 Guardar Cambios")
+            
+            if guardar_cambios:
+                db.actualizar_trabajo(
+                    trabajo_id=t["id"],
+                    nombre=edit_nombre,
+                    paciente=edit_paciente,
+                    tipo_trabajo=edit_tipo,
+                    descripcion=edit_desc,
+                    fecha_entrega=edit_fecha_entrega,
+                    precio=edit_precio,
+                    estado=edit_estado,
+                    notas=edit_notas
+                )
+                st.success("¡Orden actualizada exitosamente!")
+                st.rerun()
+                    
 
 
 # ── NAVEGACIÓN ─────────────────────────────────────────────────────────────────
@@ -204,6 +254,25 @@ elif busqueda.strip():
 # ── DASHBOARD ──────────────────────────────────────────────────────────────────
 elif pagina == "📊 Dashboard":
     st.title("Dashboard")
+    
+    # Traemos los trabajos activos una sola vez para las alertas y la lista inferior
+    trabajos_activos = db.obtener_trabajos_activos()
+    hoy_str = str(date.today())
+    
+    # --- SISTEMA DE ALERTAS DE ATRASO ---
+    atrasados = [
+        t for t in trabajos_activos 
+        if t["fecha_entrega"] and t["fecha_entrega"] < hoy_str and t["estado"] not in ("entregado", "cobrado")
+    ]
+    
+    if atrasados:
+        st.error(f"⚠️ **Atención:** Tienes {len(atrasados)} orden(es) de trabajo con la fecha de entrega vencida.")
+        with st.expander("🔍 Ver detalles de trabajos críticos atrasados", expanded=False):
+            for a in atrasados:
+                ot_num = db.numero_ot(a["id"])
+                st.markdown(f"**{ot_num}** — 👤 Paciente: *{a['paciente'] or '—'}* | 🦷 Trabajo: *{a['nombre'] or a['tipo_trabajo']}* | 📅 Venció el: `{a['fecha_entrega']}`")
+    # -------------------------------------
+
     resumen = db.resumen_general()
 
     col1, col2, col3, col4 = st.columns(4)
@@ -223,11 +292,11 @@ elif pagina == "📊 Dashboard":
 
     st.divider()
     st.subheader("Órdenes activas")
-    trabajos = db.obtener_trabajos_activos()
-    if not trabajos:
+    
+    if not trabajos_activos:
         st.info("No hay órdenes activas.")
     else:
-        for t in trabajos:
+        for t in trabajos_activos:
             fila_trabajo(t)
 
 # ── NUEVA ORDEN ────────────────────────────────────────────────────────────────

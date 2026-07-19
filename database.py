@@ -369,3 +369,24 @@ def trabajos_por_cliente_mes(cliente_id, anio, mes):
     """, (cliente_id, str(anio), f"{mes:02d}")).fetchall()
     conn.close()
     return rows
+def actualizar_trabajo(trabajo_id, nombre, paciente, tipo_trabajo, descripcion, 
+                       fecha_entrega, precio, estado, notas):
+    """Actualiza de forma integral todos los campos modificables de una OT."""
+    conn = conectar()
+    conn.execute(
+        """UPDATE trabajos
+           SET nombre = ?, paciente = ?, tipo_trabajo = ?, descripcion = ?,
+               fecha_entrega = ?, precio = ?, estado = ?, notas = ?
+           WHERE id = ?""",
+        (nombre.strip() if nombre else None,
+         paciente.strip() if paciente else None,
+         tipo_trabajo, 
+         descripcion.strip() if descripcion else "",
+         str(fecha_entrega) if fecha_entrega else None,
+         precio if precio and precio > 0 else None,
+         estado, 
+         notas.strip() if notas else "",
+         trabajo_id),
+    )
+    conn.commit()
+    conn.close()
