@@ -118,7 +118,7 @@ def inicializar_db():
 
     conn.commit()
     conn.close()
-
+    sembrar_datos_demo()
 
 def numero_ot(trabajo_id):
     return f"OT-{trabajo_id:04d}"
@@ -389,4 +389,34 @@ def actualizar_trabajo(trabajo_id, nombre, paciente, tipo_trabajo, descripcion,
          trabajo_id),
     )
     conn.commit()
+    conn.close()
+def sembrar_datos_demo():
+    """Inserta datos de prueba para que la demo no se vea vacía."""
+    conn = conectar()
+    c = conn.cursor()
+    
+    # Verificar si ya existen clientes para no duplicar en cada reinicio
+    if c.execute("SELECT COUNT(*) FROM clientes").fetchone()[0] == 0:
+        # 1. Insertar Dentistas de prueba
+        tok1 = str(uuid.uuid4())
+        tok2 = str(uuid.uuid4())
+        c.execute("INSERT INTO clientes (nombre, telefono, notas, token) VALUES (?, ?, ?, ?)",
+                  ("Dr. Simil Dental", "+56911112222", "Clínica Dental San Apollonia", tok1))
+        c.execute("INSERT INTO clientes (nombre, telefono, notas, token) VALUES (?, ?, ?, ?)",
+                  ("Dra. Beatriz Molina", "+56933334444", "Especialista en Estética", tok2))
+        
+        # 2. Insertar órdenes de trabajo iniciales (asumiendo IDs 1 y 2)
+        c.execute("""INSERT INTO trabajos 
+                     (cliente_id, nombre, paciente, tipo_trabajo, descripcion, fecha_ingreso, fecha_entrega, precio, estado, notas)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  (1, "Corona estética", "Juan Pérez", "Corona Zirconio (Monolítica)", 
+                   "Pieza 2.1, color A2 notable", str(date.today()), str(date.today()), 85000, "pendiente", "Urgente"))
+                  
+        c.execute("""INSERT INTO trabajos 
+                     (cliente_id, nombre, paciente, tipo_trabajo, descripcion, fecha_ingreso, fecha_entrega, precio, estado, notas)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  (2, "Prótesis flexible inferior", "María José", "Prótesis Flexible (Deflex / Valplast)", 
+                   "Diseño estándar sin retenedores metálicos", str(date.today()), str(date.today()), 140000, "listo", ""))
+        
+        conn.commit()
     conn.close()
