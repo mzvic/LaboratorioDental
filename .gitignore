@@ -1,3 +1,4 @@
 data/laboratorio.db
 fotos/
-
+__pycache__/
+*.pyc
