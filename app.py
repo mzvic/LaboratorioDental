@@ -196,10 +196,57 @@ button[kind="secondary"] {
     border: 1px dashed #CBD5E1;
 }
 
-/* Ocultar menú hamburguesa y footer de Streamlit */
+/* Ocultar solo el branding de Streamlit, NO el toggle del sidebar en móvil */
 #MainMenu { visibility: hidden; }
 footer { visibility: hidden; }
-header { visibility: hidden; }
+[data-testid="stToolbar"] { display: none !important; }
+[data-testid="stDecoration"] { display: none !important; }
+[data-testid="stStatusWidget"] { display: none !important; }
+
+/* Sidebar radio — quitar círculos, estilizar como nav */
+section[data-testid="stSidebar"] div[data-baseweb="radio"] > div:first-child {
+    display: none !important;
+}
+section[data-testid="stSidebar"] div[data-baseweb="radio"] {
+    border-radius: 8px;
+    transition: background .15s;
+    margin: 1px 0;
+}
+section[data-testid="stSidebar"] div[data-baseweb="radio"]:hover {
+    background: rgba(255,255,255,.1);
+}
+section[data-testid="stSidebar"] div[data-baseweb="radio"]:has(input:checked) {
+    background: rgba(255,255,255,.15) !important;
+    border-left: 3px solid #5B9BD5 !important;
+    border-radius: 0 8px 8px 0 !important;
+}
+section[data-testid="stSidebar"] div[data-baseweb="radio"]:has(input:checked) label {
+    font-weight: 600 !important;
+    color: white !important;
+}
+section[data-testid="stSidebar"] div[data-baseweb="radio"] label {
+    padding: 9px 14px !important;
+    font-size: 14px !important;
+    cursor: pointer;
+    width: 100%;
+}
+
+/* Barra nav móvil — visible solo en pantallas pequeñas */
+.nav-movil {
+    background: #1E3A5F;
+    border-radius: 10px;
+    padding: 6px 10px;
+    margin-bottom: 4px;
+}
+.nav-movil-widget {
+    margin-bottom: 16px;
+}
+@media (min-width: 768px) {
+    .nav-movil,
+    .nav-movil-widget {
+        display: none !important;
+    }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -221,8 +268,10 @@ PORTAL_BASE = "http://portal.odontomax.mzvic.xyz"
 
 if "detalle_id" not in st.session_state:
     st.session_state.detalle_id = None
+if "pagina" not in st.session_state:
+    st.session_state.pagina = "📊 Dashboard"
 
-
+NAV_OPCIONES = ["📊 Dashboard","➕ Nueva orden","👥 Clientes","📋 Historial","💰 Cobros"]
 # ── HELPERS ────────────────────────────────────────────────────────────────────
 def es_atrasado(t):
     return (t["fecha_entrega"]
@@ -231,27 +280,28 @@ def es_atrasado(t):
 
 
 def fila_trabajo(t):
-    col_btn, col_contenido = st.columns([1, 8])
-    with col_btn:
-        if st.button("Abrir", key=f"abrir_{t['id']}"):
-            st.session_state.detalle_id = t["id"]
-            st.rerun()
-    with col_contenido:
-        ot = db.numero_ot(t["id"])
-        nombre = t["nombre"] if t["nombre"] else t["tipo_trabajo"]
-        paciente = f"👤 {t['paciente']}" if t["paciente"] else ""
-        badge = BADGE_ESTADO.get(t["estado"], "")
-        atraso = ' <span class="badge badge-atrasado">⚠ Atrasado</span>' if es_atrasado(t) else ""
-        st.markdown(
-            f'<div class="ot-row">'
-            f'<span class="ot-num">{ot}</span>'
-            f'<span class="ot-nombre">{nombre}</span>'
-            f'<span class="ot-meta">{t["cliente_nombre"]}</span>'
-            f'{"<span class=\"ot-meta\">·</span><span class=\"ot-meta\">" + paciente + "</span>" if paciente else ""}'
-            f'<span style="margin-left:auto;display:flex;gap:6px">{badge}{atraso}</span>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
+    nombre = t["nombre"] if t["nombre"] else t["tipo_trabajo"]
+    atraso = " ⚠️" if es_atrasado(t) else ""
+    emoji  = EMOJI_ESTADO.get(t["estado"], "⚪")
+    titulo = f"{emoji} {db.numero_ot(t['id'])} · {nombre} · {t['cliente_nombre']}{atraso}"
+
+    with st.expander(titulo):
+        col_datos, col_btn = st.columns([3, 1])
+        with col_datos:
+            if t["paciente"]:
+                st.markdown(f'👤 **{t["paciente"]}**')
+            badge = BADGE_ESTADO.get(t["estado"], "")
+            badge_atraso = ' <span class="badge badge-atrasado">⚠ Atrasado</span>' if es_atrasado(t) else ""
+            st.markdown(f'{badge}{badge_atraso}', unsafe_allow_html=True)
+            if t["fecha_entrega"]:
+                st.caption(f"Entrega: {t['fecha_entrega']}")
+            if t["precio"]:
+                st.caption(f"Precio: ${t['precio']:,.0f}")
+        with col_btn:
+            if st.button("Abrir", key=f"abrir_{t['id']}"):
+                st.session_state.detalle_id = t["id"]
+                st.rerun()
+
 
 
 # ── VISTA DETALLE ──────────────────────────────────────────────────────────────
@@ -413,8 +463,27 @@ with st.sidebar:
     busqueda = st.text_input("🔍 Buscar OT o paciente",
         placeholder="OT-0003 o García", label_visibility="collapsed")
     st.markdown("---")
-    pagina = st.radio("", ["📊 Dashboard","➕ Nueva orden","👥 Clientes","📋 Historial","💰 Cobros"],
-        label_visibility="collapsed")
+    idx_actual = NAV_OPCIONES.index(st.session_state.pagina) if st.session_state.pagina in NAV_OPCIONES else 0
+    pagina_sidebar = st.radio("", NAV_OPCIONES, index=idx_actual, label_visibility="collapsed")
+    if pagina_sidebar != st.session_state.pagina:
+        st.session_state.pagina = pagina_sidebar
+        st.session_state.detalle_id = None
+        st.rerun()
+
+pagina = st.session_state.pagina
+
+# ── NAV MÓVIL — siempre visible, funciona en celular sin sidebar ───────────────
+st.markdown('<div class="nav-movil">', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
+st.markdown('<div class="nav-movil-widget">', unsafe_allow_html=True)
+pagina_movil = st.selectbox("", NAV_OPCIONES,
+    index=NAV_OPCIONES.index(pagina),
+    label_visibility="collapsed",
+    key="nav_movil_sel")
+st.markdown('</div>', unsafe_allow_html=True)
+if pagina_movil != pagina and not busqueda.strip() and st.session_state.detalle_id is None:
+    st.session_state.pagina = pagina_movil
+    st.rerun()
 
 # ── ROUTING ────────────────────────────────────────────────────────────────────
 if st.session_state.detalle_id is not None:
