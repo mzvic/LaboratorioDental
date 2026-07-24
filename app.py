@@ -6,7 +6,7 @@ import pdfs
 
 st.set_page_config(
     page_title="Sincrodent — Laboratorio Dental",
-    page_icon="🦷",
+    page_icon="Sincrodent.png",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -32,18 +32,18 @@ header { visibility: hidden; }
 .main .block-container { max-width: 1100px; padding-top: 1rem; }
 
 /* ── BARRA DE NAV SUPERIOR ── */
-.topnav {
+/*.topnav {
     display: flex;
     align-items: center;
     gap: 12px;
-    background: #1E3A5F;
+    background: #FFFFFF;
     border-radius: 12px;
     padding: 10px 16px;
     margin-bottom: 20px;
 }
 .topnav-logo { font-size: 18px; font-weight: 700; color: white; white-space: nowrap; }
 .topnav-search { flex: 1; }
-
+*/
 /* Selectbox dentro de topnav */
 .topnav [data-testid="stTextInput"] input {
     background: rgba(255,255,255,.12) !important;
@@ -278,7 +278,7 @@ col_logo, col_nav, col_search = st.columns([2, 4, 3])
 
 with col_logo:
     if os.path.exists("logo.jpeg"):
-        st.image("logo.jpeg", width=44)
+        st.image("logo.jpeg", width=50)
 
 with col_nav:
     idx = NAV_OPCIONES.index(st.session_state.pagina) if st.session_state.pagina in NAV_OPCIONES else 0
