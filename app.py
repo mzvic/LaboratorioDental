@@ -78,7 +78,7 @@ header { visibility: hidden; }
 
 /* Botones */
 .stButton > button {
-    background: #1E3A5F !important;
+    background: #0F2A4A !important;
     color: white !important;
     border: none !important;
     border-radius: 8px !important;
@@ -87,8 +87,9 @@ header { visibility: hidden; }
     padding: .4rem 1rem !important;
     transition: background .15s !important;
 }
-.stButton > button:hover { background: #2D5080 !important; }
-.stButton > button[kind="secondary"] {
+.stButton > button:hover { 
+    background: #1E3A5F !important; 
+}.stButton > button[kind="secondary"] {
     background: white !important;
     color: #1E3A5F !important;
     border: 1px solid #CBD5E1 !important;
@@ -121,9 +122,8 @@ header { visibility: hidden; }
     background: transparent;
 }
 .stTabs [aria-selected="true"] {
-    background: white !important;
-    color: #1E3A5F !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,.08) !important;
+    color: #008B8B !important;
+    border-bottom: 2px solid #008B8B !important;
 }
 .stTabs [data-baseweb="tab-border"] { display: none !important; }
 
@@ -234,7 +234,7 @@ MESES_FULL = ["enero","febrero","marzo","abril","mayo","junio",
               "julio","agosto","septiembre","octubre","noviembre","diciembre"]
 DIAS_ES = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"]
 PORTAL_BASE = "http://portal.odontomax.mzvic.xyz"
-NAV_OPCIONES = ["📊 Dashboard","➕ Nueva orden","👥 Clientes","📋 Historial","💰 Cobros"]
+NAV_OPCIONES = ["📊 Dashboard","➕ Nueva orden","👥 Dentistas","📋 Historial","💰 Cobros"]
 
 if "detalle_id" not in st.session_state:
     st.session_state.detalle_id = None
@@ -253,7 +253,9 @@ def fila_trabajo(t):
     nombre = t["nombre"] if t["nombre"] else t["tipo_trabajo"]
     atraso = " ⚠️" if es_atrasado(t) else ""
     emoji  = EMOJI_ESTADO.get(t["estado"], "⚪")
-    titulo = f"{emoji} {db.numero_ot(t['id'])} · {nombre} · {t['cliente_nombre']}{atraso}"
+    es_conf = t["notas"] and t["notas"].startswith("[confidencial]")
+    cliente_label = f"🔒 {t['cliente_nombre']}" if es_conf else t["cliente_nombre"]
+    titulo = f"{emoji} {db.numero_ot(t['id'])} · {nombre} · {cliente_label}{atraso}"
     with st.expander(titulo):
         col_datos, col_btn = st.columns([3, 1])
         with col_datos:
@@ -272,30 +274,38 @@ def fila_trabajo(t):
                 st.rerun()
 
 
-# ── BARRA SUPERIOR ─────────────────────────────────────────────────────────────
-st.markdown('<div class="topnav">', unsafe_allow_html=True)
-col_logo, col_nav, col_search = st.columns([2, 4, 3])
-
+# ── TOPNAV ─────────────────────────────────────────────────────────────────────
+col_logo, col_search = st.columns([1, 4])
 with col_logo:
     if os.path.exists("logo.jpeg"):
         st.image("logo.jpeg", width=50)
-
-with col_nav:
-    idx = NAV_OPCIONES.index(st.session_state.pagina) if st.session_state.pagina in NAV_OPCIONES else 0
-    nav_sel = st.selectbox("nav", NAV_OPCIONES, index=idx,
-        label_visibility="collapsed", key="nav_top")
-    if nav_sel != st.session_state.pagina:
-        st.session_state.pagina = nav_sel
-        st.session_state.detalle_id = None
-        st.rerun()
-
 with col_search:
     busqueda = st.text_input("buscar", placeholder="🔍  Buscar OT o paciente...",
         label_visibility="collapsed", key="busqueda_top")
 
-st.markdown('</div>', unsafe_allow_html=True)
+st.divider()
 
+# ── NAVEGACIÓN — siempre visible en todas las páginas ──────────────────────────
 pagina = st.session_state.pagina
+NAV_ITEMS = [
+    ("📊", "Dashboard",   "📊 Dashboard"),
+    ("➕", "Nueva orden", "➕ Nueva orden"),
+    ("👥", "Dentistas",    "👥 Dentistas"),
+    ("📋", "Historial",   "📋 Historial"),
+    ("💰", "Cobros",      "💰 Cobros"),
+]
+nav_cols = st.columns(5)
+for col, (icon, label, key) in zip(nav_cols, NAV_ITEMS):
+    with col:
+        active = (pagina == key and st.session_state.detalle_id is None and not busqueda.strip())
+        indicator = f'<div style="height:3px;background:#1E3A5F;border-radius:2px;margin-bottom:4px"></div>' if active else '<div style="height:3px;margin-bottom:4px"></div>'
+        st.markdown(indicator, unsafe_allow_html=True)
+        if st.button(f"{icon} {label}", key=f"nav_{key}", use_container_width=True):
+            st.session_state.pagina = key
+            st.session_state.detalle_id = None
+            st.rerun()
+
+st.markdown('<div style="margin-bottom:1rem"></div>', unsafe_allow_html=True)
 
 
 # ── VISTA DETALLE ──────────────────────────────────────────────────────────────
@@ -312,6 +322,9 @@ def vista_detalle(trabajo_id):
 
     ot = db.numero_ot(t["id"])
     nombre_mostrar = t["nombre"] if t["nombre"] else t["tipo_trabajo"]
+    es_conf = t["notas"] and t["notas"].startswith("[confidencial]")
+    cliente_mostrar = f"🔒 {t['cliente_nombre']}" if es_conf else t["cliente_nombre"]
+    notas_limpias = t["notas"].replace("[confidencial] ", "").replace("[confidencial]", "").strip() if t["notas"] else ""
     badge = BADGE_ESTADO.get(t["estado"], "")
     atraso = ' <span class="badge badge-atrasado">⚠ Atrasado</span>' if es_atrasado(t) else ""
 
@@ -326,7 +339,7 @@ def vista_detalle(trabajo_id):
     with tab_info:
         st.markdown(
             f'<div class="info-box"><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">'
-            f'<div><div class="info-label">Cliente</div><div class="info-value">{t["cliente_nombre"]}</div></div>'
+            f'<div><div class="info-label">Cliente</div><div class="info-value">{cliente_mostrar}</div></div>'
             f'<div><div class="info-label">Paciente</div><div class="info-value">{t["paciente"] or "—"}</div></div>'
             f'<div><div class="info-label">Tipo</div><div class="info-value">{t["tipo_trabajo"]}</div></div>'
             f'<div><div class="info-label">Ingreso</div><div class="info-value">{t["fecha_ingreso"]}</div></div>'
@@ -341,8 +354,8 @@ def vista_detalle(trabajo_id):
                 f'<div class="info-value">{t["descripcion"]}</div></div>',
                 unsafe_allow_html=True,
             )
-        if t["notas"]:
-            st.caption(f"📝 {t['notas']}")
+        if notas_limpias:
+            st.caption(f"📝 {notas_limpias}")
         if t["foto_path"] and os.path.exists(t["foto_path"]):
             st.image(t["foto_path"], width=300)
         foto_nueva = st.file_uploader("Subir / reemplazar foto", type=["jpg","jpeg","png"], key=f"foto_{t['id']}")
@@ -494,7 +507,7 @@ elif pagina == "➕ Nueva orden":
     st.markdown('<h2 style="color:#1E3A5F;margin-bottom:1rem">Nueva orden de trabajo</h2>', unsafe_allow_html=True)
     clientes = db.obtener_clientes()
     if not clientes:
-        st.warning("Primero agrega un cliente en 👥 Clientes.")
+        st.warning("Primero agrega un cliente en 👥 Dentistas.")
     else:
         opciones = {c["nombre"]: c["id"] for c in clientes}
         with st.form("form_nueva_orden", clear_on_submit=True):
@@ -512,19 +525,22 @@ elif pagina == "➕ Nueva orden":
             precio = c7.number_input("Precio ($)", min_value=0, step=1000, value=0)
             notas  = c8.text_input("Notas internas (opcional)")
             foto   = st.file_uploader("Foto del trabajo (opcional)", type=["jpg","jpeg","png"])
+            confidencial = st.checkbox("🔒 Ocultar nombre del dentista (trabajo subcontratado)")
             if st.form_submit_button("💾 Guardar orden"):
+                notas_final = ("[confidencial] " + notas).strip() if confidencial else notas
                 tid = db.agregar_trabajo(
                     cliente_id=opciones[cliente_nombre], nombre=nombre_trabajo,
                     paciente=paciente, tipo=tipo, descripcion=descripcion,
                     fecha_ingreso=fecha_ingreso, fecha_entrega=fecha_entrega,
-                    precio=precio if precio > 0 else None, notas=notas)
+                    precio=precio if precio > 0 else None, notas=notas_final)
                 if foto:
                     db.guardar_foto(tid, foto.read(), foto.name.rsplit(".",1)[-1].lower())
-                st.success(f"Orden **{db.numero_ot(tid)}** guardada correctamente.")
+                st.session_state.detalle_id = tid
+                st.rerun()
 
-elif pagina == "👥 Clientes":
-    st.markdown('<h2 style="color:#1E3A5F;margin-bottom:1rem">Clientes / Dentistas</h2>', unsafe_allow_html=True)
-    with st.expander("➕ Agregar nuevo cliente"):
+elif pagina == "👥 Dentistas":
+    st.markdown('<h2 style="color:#1E3A5F;margin-bottom:1rem">Dentistas / Clientes</h2>', unsafe_allow_html=True)
+    with st.expander("➕ Agregar nuevo dentista"):
         with st.form("form_cliente", clear_on_submit=True):
             c1,c2 = st.columns(2)
             nombre   = c1.text_input("Nombre del dentista o clínica")
@@ -537,7 +553,7 @@ elif pagina == "👥 Clientes":
                     st.info(f"Link del portal: `{PORTAL_BASE}/?token={token}`")
                     st.rerun()
                 else: st.error("El nombre no puede estar vacío.")
-    st.markdown('<div class="section-label">Clientes registrados</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">Dentistas registrados</div>', unsafe_allow_html=True)
     for c in db.obtener_clientes():
         with st.expander(f"🦷  {c['nombre']}" + (f"  ·  {c['telefono']}" if c["telefono"] else "")):
             if c["notas"]: st.caption(c["notas"])

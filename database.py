@@ -363,9 +363,9 @@ def trabajos_por_cliente_mes(cliente_id, anio, mes):
         FROM trabajos t JOIN clientes c ON t.cliente_id = c.id
         WHERE t.cliente_id = ?
           AND t.estado IN ('entregado', 'cobrado')
-          AND strftime('%Y', t.fecha_entrega) = ?
-          AND strftime('%m', t.fecha_entrega) = ?
-        ORDER BY t.fecha_entrega ASC
+          AND strftime('%Y', COALESCE(t.fecha_entrega, t.fecha_ingreso)) = ?
+          AND strftime('%m', COALESCE(t.fecha_entrega, t.fecha_ingreso)) = ?
+        ORDER BY COALESCE(t.fecha_entrega, t.fecha_ingreso) ASC
     """, (cliente_id, str(anio), f"{mes:02d}")).fetchall()
     conn.close()
     return rows
@@ -383,7 +383,7 @@ def actualizar_trabajo(trabajo_id, nombre, paciente, tipo_trabajo, descripcion,
          tipo_trabajo, 
          descripcion.strip() if descripcion else "",
          str(fecha_entrega) if fecha_entrega else None,
-         precio if precio and precio > 0 else None,
+         precio if precio is not None and precio >= 0 else None,
          estado, 
          notas.strip() if notas else "",
          trabajo_id),

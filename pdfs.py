@@ -169,6 +169,9 @@ def generar_ot(trabajo, materiales=None):
     )
 
     ot_str = f"OT-{trabajo['id']:04d}"
+    es_conf = trabajo["notas"] and trabajo["notas"].startswith("[confidencial]")
+    cliente_pdf = "Confidencial" if es_conf else trabajo["cliente_nombre"]
+    notas_pdf = trabajo["notas"].replace("[confidencial] ", "").replace("[confidencial]", "").strip() if trabajo["notas"] else None
     historia = []
 
     # ── Encabezado ──
@@ -179,7 +182,7 @@ def generar_ot(trabajo, materiales=None):
     historia.append(_titulo_seccion("Datos del trabajo"))
     historia.append(Spacer(1, 0.2 * cm))
     historia.append(_fila_datos([
-        ("CLIENTE",          trabajo["cliente_nombre"]),
+        ("CLIENTE",          cliente_pdf),
         ("PACIENTE",         trabajo["paciente"]),
         ("TIPO",             trabajo["tipo_trabajo"]),
         ("NOMBRE TRABAJO",   trabajo["nombre"]),
@@ -188,7 +191,7 @@ def generar_ot(trabajo, materiales=None):
         ("FECHA ENTREGA",    trabajo["fecha_entrega"]),
         ("PRECIO",           f"${trabajo['precio']:,.0f}" if trabajo["precio"] else None),
         ("ESTADO",           trabajo["estado"].upper()),
-        ("NOTAS",            trabajo["notas"]),
+        ("NOTAS",            notas_pdf),
     ]))
     historia.append(Spacer(1, 0.4 * cm))
 
