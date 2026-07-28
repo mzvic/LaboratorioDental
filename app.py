@@ -278,7 +278,7 @@ def fila_trabajo(t):
 col_logo, col_search = st.columns([1, 4])
 with col_logo:
     if os.path.exists("logo.jpeg"):
-        st.image("logo.jpeg", width=50)
+        st.image("Sincrodent_Logotipo_SinFondo.png", width=200)
 with col_search:
     busqueda = st.text_input("buscar", placeholder="🔍  Buscar OT o paciente...",
         label_visibility="collapsed", key="busqueda_top")
