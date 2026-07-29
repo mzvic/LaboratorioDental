@@ -224,6 +224,14 @@ BADGE_ESTADO = {
     "entregado":  '<span class="badge badge-entregado">Entregado</span>',
     "cobrado":    '<span class="badge badge-cobrado">Cobrado ✓</span>',
 }
+
+ESTADO_LABELS = {
+    "pendiente":  "Pendiente",
+    "en_proceso": "En Proceso",
+    "listo":      "Listo",
+    "entregado":  "Entregado",
+    "cobrado":    "Cobrado",
+}
 EMOJI_ESTADO = {
     "pendiente": "🔵", "en_proceso": "🟡",
     "listo": "🟢", "entregado": "🟠", "cobrado": "✅",
@@ -368,6 +376,7 @@ def vista_detalle(trabajo_id):
         col_estado, col_cobro, col_pdf = st.columns(3)
         with col_estado:
             nuevo_estado = st.selectbox("Estado", db.ESTADOS,
+                format_func=lambda x: ESTADO_LABELS.get(x, x),
                 index=db.ESTADOS.index(t["estado"]), key=f"estado_{t['id']}")
             if nuevo_estado != t["estado"]:
                 if st.button("Actualizar estado", key=f"btn_estado_{t['id']}"):
@@ -429,7 +438,7 @@ def vista_detalle(trabajo_id):
             ef = c3.date_input("Fecha de entrega", value=fecha_e)
             epr = c4.number_input("Precio ($)", min_value=0, step=1000, value=int(t["precio"]) if t["precio"] else 0)
             idx_s = db.ESTADOS.index(t["estado"]) if t["estado"] in db.ESTADOS else 0
-            es_sel = st.selectbox("Estado", db.ESTADOS, index=idx_s)
+            es_sel = st.selectbox("Estado", db.ESTADOS, format_func=lambda x: ESTADO_LABELS.get(x, x), index=idx_s)
             eno = st.text_input("Notas internas", value=t["notas"] or "")
             if st.form_submit_button("💾 Guardar cambios"):
                 db.actualizar_trabajo(trabajo_id=t["id"], nombre=en, paciente=ep,
@@ -566,7 +575,7 @@ elif pagina == "📋 Historial":
     clientes = db.obtener_clientes()
     c1,c2 = st.columns(2)
     filtro        = c1.selectbox("Cliente", ["Todos"] + [c["nombre"] for c in clientes])
-    filtro_estado = c2.multiselect("Estado", db.ESTADOS, default=db.ESTADOS)
+    filtro_estado = c2.multiselect("Estado", db.ESTADOS, default=db.ESTADOS, format_func=lambda x: ESTADO_LABELS.get(x, x))
     trabajos = db.obtener_todos_trabajos()
     if filtro != "Todos": trabajos = [t for t in trabajos if t["cliente_nombre"] == filtro]
     if filtro_estado:     trabajos = [t for t in trabajos if t["estado"] in filtro_estado]
@@ -618,4 +627,3 @@ elif pagina == "💰 Cobros":
                 data=pdf_bytes,
                 file_name=f"cobro_{cliente_sel.replace(' ','_')}_{anio_sel}_{mes_sel:02d}.pdf",
                 mime="application/pdf")
-
