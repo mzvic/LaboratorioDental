@@ -15,6 +15,7 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image
 )
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+from config import cfg
 
 # ── Paleta de colores ──────────────────────────────────────────────────────────
 AZUL       = colors.HexColor("#1E3A5F")
@@ -24,8 +25,14 @@ GRIS_CLARO = colors.HexColor("#F5F5F5")
 VERDE      = colors.HexColor("#2E7D32")
 BLANCO     = colors.white
 
-NOMBRE_LAB = "Laboratorio Dental OdontoMax"   # ← cambia esto al nombre real
-LOGO_PATH  = os.path.join(os.path.dirname(__file__), "logo.jpeg") # ← Ruta a tu logo local
+def _get_nombre_lab():
+    from config import cargar
+    return cargar()["NOMBRE_LAB"]
+
+def _get_logo_path():
+    from config import cargar
+    p = cargar()["LOGO_PATH"]
+    return os.path.join(os.path.dirname(__file__), p)
 
 # ── Estilos reutilizables ──────────────────────────────────────────────────────
 estilos = getSampleStyleSheet()
@@ -66,9 +73,9 @@ pie = ParagraphStyle(
 
 def _obtener_componente_logo():
     """Retorna un objeto Image si el logo existe, o un Spacer si no se encuentra."""
-    if os.path.exists(LOGO_PATH):
+    if os.path.exists(_get_logo_path()):
         # Ajustamos el logo a un alto máximo de 1.2 cm manteniendo la proporción
-        return Image(LOGO_PATH, height=1.2 * cm, width=1.2 * cm, kind='proportional')
+        return Image(_get_logo_path(), height=1.2 * cm, width=1.2 * cm, kind='proportional')
     return Spacer(1, 1)
 
 
@@ -78,7 +85,7 @@ def _encabezado_lab(numero_ot):
     
     # Metemos el logo y los textos en una sub-tabla interna para alinearlos perfectamente
     textos_header = [
-        [Paragraph(NOMBRE_LAB, titulo_lab)],
+        [Paragraph(_get_nombre_lab(), titulo_lab)],
         [Paragraph("Orden de Trabajo", subtitulo_lab)]
     ]
     tabla_textos = Table(textos_header, colWidths=[8 * cm])
@@ -259,7 +266,7 @@ def generar_ot(trabajo, materiales=None):
     historia.append(HRFlowable(width="100%", color=GRIS, thickness=0.5))
     historia.append(Spacer(1, 0.2 * cm))
     historia.append(Paragraph(
-        f"Documento generado el {date.today().strftime('%d/%m/%Y')} · {NOMBRE_LAB}",
+        f"Documento generado el {date.today().strftime('%d/%m/%Y')} · {_get_nombre_lab()}",
         pie,
     ))
 
@@ -291,7 +298,7 @@ def generar_cobro(cliente_nombre, trabajos, mes_label):
     logo = _obtener_componente_logo()
     
     textos_header = [
-        [Paragraph(NOMBRE_LAB, titulo_lab)],
+        [Paragraph(_get_nombre_lab(), titulo_lab)],
         [Paragraph("Orden de Cobro", subtitulo_lab)]
     ]
     tabla_textos = Table(textos_header, colWidths=[8 * cm])
@@ -414,17 +421,23 @@ def generar_cobro(cliente_nombre, trabajos, mes_label):
     # ── Datos de pago ──
     historia.append(_titulo_seccion("Datos de pago"))
     historia.append(Spacer(1, 0.2 * cm))
-    historia.append(Paragraph(
-        "Transferencia bancaria · Banco: _______________  · Cuenta: _______________  · RUT: _______________",
-        normal,
-    ))
+    from config import cargar
+    _cfg = cargar()
+    banco_str = (
+        f"Transferencia bancaria"
+        f" · Banco: {_cfg['BANCO']}"
+        f" · {_cfg['TIPO_CUENTA']}: {_cfg['NUMERO_CUENTA']}"
+        f" · RUT: {_cfg['RUT_LAB']}"
+        f" · Titular: {_cfg['NOMBRE_TITULAR']}"
+    )
+    historia.append(Paragraph(banco_str, normal))
     historia.append(Spacer(1, 0.8 * cm))
 
     # ── Pie ──
     historia.append(HRFlowable(width="100%", color=GRIS, thickness=0.5))
     historia.append(Spacer(1, 0.2 * cm))
     historia.append(Paragraph(
-        f"Documento generado el {date.today().strftime('%d/%m/%Y')} · {NOMBRE_LAB}",
+        f"Documento generado el {date.today().strftime('%d/%m/%Y')} · {_get_nombre_lab()}",
         pie,
     ))
 

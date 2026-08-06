@@ -1,0 +1,19 @@
+# ── Datos del laboratorio ──────────────────────────────────────────────────────
+NOMBRE_LAB=Laboratorio OdontoMax
+TELEFONO_LAB=+56912345678
+EMAIL_LAB=contacto@odontomax.cl
+DIRECCION_LAB=Concepción, Región del Biobío
+
+# ── Datos bancarios (para órdenes de cobro PDF) ────────────────────────────────
+BANCO=Banco Estado
+TIPO_CUENTA=Cuenta Corriente
+NUMERO_CUENTA=00012345678
+RUT_LAB=12.345.678-9
+NOMBRE_TITULAR=Juan Pérez González
+
+# ── Configuración del portal ───────────────────────────────────────────────────
+PORTAL_BASE=http://portal.odontomax.mzvic.xyz
+
+# ── Logo ───────────────────────────────────────────────────────────────────────
+LOGO_PATH=logo.jpeg
+LOGO_APP_PATH=Sincrodent.png

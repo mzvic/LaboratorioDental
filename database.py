@@ -369,6 +369,34 @@ def trabajos_por_cliente_mes(cliente_id, anio, mes):
     """, (cliente_id, str(anio), f"{mes:02d}")).fetchall()
     conn.close()
     return rows
+def eliminar_trabajo(trabajo_id):
+    """Elimina una OT y todos sus datos asociados (pagos, materiales, foto)."""
+    conn = conectar()
+    row = conn.execute("SELECT foto_path FROM trabajos WHERE id = ?", (trabajo_id,)).fetchone()
+    if row and row["foto_path"] and os.path.exists(row["foto_path"]):
+        os.remove(row["foto_path"])
+    conn.execute("DELETE FROM materiales WHERE trabajo_id = ?", (trabajo_id,))
+    conn.execute("DELETE FROM pagos WHERE trabajo_id = ?", (trabajo_id,))
+    conn.execute("DELETE FROM trabajos WHERE id = ?", (trabajo_id,))
+    conn.commit()
+    conn.close()
+
+
+def obtener_trabajos_por_cliente(cliente_id):
+    """Últimas 20 OT de un cliente — para el portal del dentista."""
+    conn = conectar()
+    rows = conn.execute("""
+        SELECT t.*, c.nombre AS cliente_nombre
+        FROM trabajos t
+        JOIN clientes c ON t.cliente_id = c.id
+        WHERE t.cliente_id = ?
+        ORDER BY t.fecha_ingreso DESC
+        LIMIT 20
+    """, (cliente_id,)).fetchall()
+    conn.close()
+    return rows
+
+
 def actualizar_trabajo(trabajo_id, nombre, paciente, tipo_trabajo, descripcion, 
                        fecha_entrega, precio, estado, notas):
     """Actualiza de forma integral todos los campos modificables de una OT."""

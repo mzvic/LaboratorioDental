@@ -3,6 +3,7 @@ from datetime import date, datetime
 import os
 import database as db
 import pdfs
+from config import cfg, guardar_todo, cargar
 
 st.set_page_config(
     page_title="Sincrodent — Laboratorio Dental",
@@ -295,14 +296,17 @@ st.divider()
 
 # ── NAVEGACIÓN — siempre visible en todas las páginas ──────────────────────────
 pagina = st.session_state.pagina
+NAV_OPCIONES = ["📊 Dashboard","➕ Nueva orden","👥 Dentistas","📋 Historial","💰 Cobros","⚙️ Perfil"]
+
 NAV_ITEMS = [
     ("📊", "Dashboard",   "📊 Dashboard"),
     ("➕", "Nueva orden", "➕ Nueva orden"),
-    ("👥", "Dentistas",    "👥 Dentistas"),
+    ("👥", "Dentistas",   "👥 Dentistas"),
     ("📋", "Historial",   "📋 Historial"),
     ("💰", "Cobros",      "💰 Cobros"),
+    ("⚙️", "Perfil",     "⚙️ Perfil"),
 ]
-nav_cols = st.columns(5)
+nav_cols = st.columns(6)
 for col, (icon, label, key) in zip(nav_cols, NAV_ITEMS):
     with col:
         active = (pagina == key and st.session_state.detalle_id is None and not busqueda.strip())
@@ -627,3 +631,70 @@ elif pagina == "💰 Cobros":
                 data=pdf_bytes,
                 file_name=f"cobro_{cliente_sel.replace(' ','_')}_{anio_sel}_{mes_sel:02d}.pdf",
                 mime="application/pdf")
+
+# ── PERFIL ─────────────────────────────────────────────────────────────────────
+elif pagina == "⚙️ Perfil":
+    st.markdown('<h2 style="color:#1E3A5F;margin-bottom:.25rem">Perfil del laboratorio</h2>', unsafe_allow_html=True)
+    st.caption("Los cambios se guardan en el archivo .env y se reflejan de inmediato en el sistema y en los PDFs.")
+
+    _cfg = cargar()
+
+    with st.form("form_perfil"):
+        st.markdown('<div class="section-label">Datos del laboratorio</div>', unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        nombre_lab  = c1.text_input("Nombre del laboratorio",  value=_cfg["NOMBRE_LAB"])
+        telefono    = c2.text_input("Teléfono",                value=_cfg["TELEFONO_LAB"])
+        c3, c4 = st.columns(2)
+        email       = c3.text_input("Email",                   value=_cfg["EMAIL_LAB"])
+        direccion   = c4.text_input("Dirección",               value=_cfg["DIRECCION_LAB"])
+
+        st.markdown('<div class="section-label">Datos bancarios (aparecen en el PDF de cobro)</div>', unsafe_allow_html=True)
+        c5, c6 = st.columns(2)
+        banco       = c5.text_input("Banco",                   value=_cfg["BANCO"])
+        tipo_cuenta = c6.text_input("Tipo de cuenta",          value=_cfg["TIPO_CUENTA"])
+        c7, c8 = st.columns(2)
+        num_cuenta  = c7.text_input("Número de cuenta",        value=_cfg["NUMERO_CUENTA"])
+        rut         = c8.text_input("RUT del laboratorio",     value=_cfg["RUT_LAB"])
+        titular     = st.text_input("Nombre del titular",      value=_cfg["NOMBRE_TITULAR"])
+
+        st.markdown('<div class="section-label">Configuración del portal</div>', unsafe_allow_html=True)
+        portal_base = st.text_input("URL base del portal",     value=_cfg["PORTAL_BASE"])
+
+        st.markdown('<div class="section-label">Logos</div>', unsafe_allow_html=True)
+        c9, c10 = st.columns(2)
+        logo_path     = c9.text_input("Archivo logo laboratorio", value=_cfg["LOGO_PATH"])
+        logo_app_path = c10.text_input("Archivo logo Sincrodent", value=_cfg["LOGO_APP_PATH"])
+
+        if st.form_submit_button("💾 Guardar cambios"):
+            guardar_todo({
+                "NOMBRE_LAB":     nombre_lab,
+                "TELEFONO_LAB":   telefono,
+                "EMAIL_LAB":      email,
+                "DIRECCION_LAB":  direccion,
+                "BANCO":          banco,
+                "TIPO_CUENTA":    tipo_cuenta,
+                "NUMERO_CUENTA":  num_cuenta,
+                "RUT_LAB":        rut,
+                "NOMBRE_TITULAR": titular,
+                "PORTAL_BASE":    portal_base,
+                "LOGO_PATH":      logo_path,
+                "LOGO_APP_PATH":  logo_app_path,
+            })
+            st.success("Perfil actualizado correctamente.")
+            st.rerun()
+
+    # Vista previa logos actuales
+    st.markdown('<div class="section-label">Vista previa de logos</div>', unsafe_allow_html=True)
+    col_l1, col_l2, col_rest = st.columns([1, 1, 4])
+    with col_l1:
+        if os.path.exists(_cfg["LOGO_PATH"]):
+            st.image(_cfg["LOGO_PATH"], width=80)
+            st.caption("Logo laboratorio")
+        else:
+            st.caption(f"No encontrado: {_cfg['LOGO_PATH']}")
+    with col_l2:
+        if os.path.exists(_cfg["LOGO_APP_PATH"]):
+            st.image(_cfg["LOGO_APP_PATH"], width=80)
+            st.caption("Logo Sincrodent")
+        else:
+            st.caption(f"No encontrado: {_cfg['LOGO_APP_PATH']}")
