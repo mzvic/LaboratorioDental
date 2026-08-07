@@ -1,14 +1,11 @@
-"""
-portal.py — Portal exclusivo para clínicas/dentistas.
-Corre en un puerto separado: streamlit run portal.py --server.port 8502
-Cada clínica accede con su link único: http://localhost:8502/?token=XXX
-"""
-
+# portal.py — Portal exclusivo para clínicas/dentistas.
 import streamlit as st
 from datetime import date, timedelta
 import database as db
 import os
-NOMBRE_LABORATORIO="Laboratorio OdontoMax"
+
+NOMBRE_LABORATORIO = "Laboratorio OdontoMax"
+
 st.set_page_config(
     page_title="Sincrodent — Portal del Dentista",
     page_icon="Sincrodent.png",
@@ -18,7 +15,7 @@ st.set_page_config(
 
 db.inicializar_db()
 
-# ── CSS (Inspirado en la aplicación principal y optimizado para móviles) ────────
+# ── CSS ────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 html, body, [class*="css"] { font-family: 'Inter', 'Segoe UI', sans-serif; }
@@ -33,7 +30,7 @@ footer { visibility: hidden; }
 [data-testid="stStatusWidget"] { display: none !important; }
 header { visibility: hidden; }
 
-/* Contenido principal centrado y limpio con padding responsivo */
+/* Contenido principal centrado */
 .main .block-container { max-width: 700px; padding-top: 1.5rem; padding-left: 1rem; padding-right: 1rem; }
 
 /* Botones principales con el Azul de Sincrodent */
@@ -77,7 +74,6 @@ header { visibility: hidden; }
     margin: 1.5rem 0 .75rem;
 }
 
-/* Ajustes responsivos para cabecera en celulares */
 @media (max-width: 640px) {
     .portal-header-title { font-size: 18px !important; }
     .portal-header-sub { font-size: 11px !important; }
@@ -100,7 +96,7 @@ if not cliente:
     st.error("Link inválido o expirado. Solicite uno nuevo al laboratorio.")
     st.stop()
 
-# ── Encabezado del Portal Responsivo (Laboratorio - Título - Software) ────────
+# ── Encabezado del Portal ─────────────────────────────────────────────────────
 col_logo_lab, col_titulo, col_logo_app = st.columns([1.2, 3.6, 1.2], vertical_alignment="center")
 
 with col_logo_lab:
@@ -119,7 +115,6 @@ with col_titulo:
     )
 
 with col_logo_app:
-    # Contenedor para alinear el logo de la app a la derecha de su columna en móviles
     st.markdown("<div style='display: flex; justify-content: flex-end;'>", unsafe_allow_html=True)
     if os.path.exists("Sincrodent.png"):
         st.image("Sincrodent.png", width=55)
@@ -148,8 +143,7 @@ with st.form("form_portal", clear_on_submit=True):
     # ── Tipo de trabajo ──
     st.markdown('<div class="section-label">Trabajo solicitado</div>', unsafe_allow_html=True)
     tipo = st.selectbox("Tipo de trabajo *", db.TIPOS_TRABAJO)
-    nombre_trabajo = st.text_input("Descripción corta del trabajo *",
-                                   placeholder="Ej: Corona pieza 14")
+    nombre_trabajo = st.text_input("Descripción corta del trabajo *", placeholder="Ej: Corona pieza 14")
 
     # ── Especificaciones técnicas ──
     st.markdown('<div class="section-label">Especificaciones técnicas</div>', unsafe_allow_html=True)
@@ -163,8 +157,7 @@ with st.form("form_portal", clear_on_submit=True):
         "Otro / No aplica",
     ]
     color = col1.selectbox("Color (guía VITA) *", GUIA_VITA)
-    diente = col2.text_input("Número(s) de pieza(s) *",
-                              placeholder="Ej: 14, 15-17")
+    diente = col2.text_input("Número(s) de pieza(s) *", placeholder="Ej: 14, 15-17")
 
     material = st.selectbox("Material preferido", [
         "Sin preferencia",
@@ -242,3 +235,51 @@ if enviado:
             f"El laboratorio revisará su solicitud y confirmará la recepción para la fecha estimada del **{fecha_entrega.strftime('%d/%m/%Y')}**."
         )
         st.balloons()
+
+# ── MIS ÓRDENES ────────────────────────────────────────────────────────────────
+st.divider()
+st.markdown(
+    '<h2 style="color:#1E3A5F;font-size:20px;font-weight:700;margin-bottom:4px">Mis órdenes</h2>'
+    '<p style="color:#94A3B8;font-size:13px;margin-bottom:1rem">Estado actual de sus trabajos en el laboratorio.</p>',
+    unsafe_allow_html=True,
+)
+
+ESTADO_LABELS = {
+    "pendiente":  ("🔵", "Pendiente",   "#EFF6FF", "#2563EB"),
+    "en_proceso": ("🟡", "En Proceso",  "#FFFBEB", "#B45309"),
+    "listo":      ("🟢", "Listo",       "#F0FDF4", "#16A34A"),
+    "entregado":  ("🟠", "Entregado",   "#FFF7ED", "#EA580C"),
+    "cobrado":    ("✅", "Cobrado",     "#F0FDF4", "#15803D"),
+}
+
+mis_trabajos = db.obtener_trabajos_por_cliente(cliente["id"])
+
+if not mis_trabajos:
+    st.markdown(
+        '<div style="text-align:center;padding:2rem;color:#CBD5E1;background:#F8FAFC;border-radius:10px;border:1px dashed #E2E8F0">'
+        'Aún no tiene órdenes enviadas.</div>',
+        unsafe_allow_html=True,
+    )
+else:
+    for t in mis_trabajos:
+        emoji, label, bg, color = ESTADO_LABELS.get(t["estado"], ("⚪", t["estado"], "#F8FAFC", "#64748B"))
+        nombre_ot = t["nombre"] if t["nombre"] else t["tipo_trabajo"]
+        ot_num = db.numero_ot(t["id"])
+        
+        # Título para la vista colapsable
+        titulo_expander = f"{ot_num} · {nombre_ot} ({t['paciente'] or 'Sin paciente'}) — {emoji} {label}"
+        
+        with st.expander(titulo_expander):
+            st.markdown(f"**Tipo de trabajo:** {t['tipo_trabajo']}")
+            if t["paciente"]:
+                st.markdown(f"**Paciente:** {t['paciente']}")
+            if t["fecha_entrega"]:
+                st.markdown(f"**Fecha estimada de entrega:** {t['fecha_entrega']}")
+            if t["descripcion"]:
+                st.markdown(f"**Detalles:** {t['descripcion']}")
+            if t["foto_path"] and os.path.exists(t["foto_path"]):
+                st.image(t["foto_path"], width=200)
+
+            st.divider()
+            
+           

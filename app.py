@@ -32,19 +32,6 @@ header { visibility: hidden; }
 /* Contenido principal sin margen de sidebar */
 .main .block-container { max-width: 1100px; padding-top: 1rem; }
 
-/* ── BARRA DE NAV SUPERIOR ── */
-/*.topnav {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: #FFFFFF;
-    border-radius: 12px;
-    padding: 10px 16px;
-    margin-bottom: 20px;
-}
-.topnav-logo { font-size: 18px; font-weight: 700; color: white; white-space: nowrap; }
-.topnav-search { flex: 1; }
-*/
 /* Selectbox dentro de topnav */
 .topnav [data-testid="stTextInput"] input {
     background: rgba(255,255,255,.12) !important;
@@ -90,7 +77,8 @@ header { visibility: hidden; }
 }
 .stButton > button:hover { 
     background: #1E3A5F !important; 
-}.stButton > button[kind="secondary"] {
+}
+.stButton > button[kind="secondary"] {
     background: white !important;
     color: #1E3A5F !important;
     border: 1px solid #CBD5E1 !important;
@@ -243,7 +231,6 @@ MESES_FULL = ["enero","febrero","marzo","abril","mayo","junio",
               "julio","agosto","septiembre","octubre","noviembre","diciembre"]
 DIAS_ES = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"]
 PORTAL_BASE = "http://portal.odontomax.mzvic.xyz"
-NAV_OPCIONES = ["📊 Dashboard","➕ Nueva orden","👥 Dentistas","📋 Historial","💰 Cobros"]
 
 if "detalle_id" not in st.session_state:
     st.session_state.detalle_id = None
@@ -294,9 +281,8 @@ with col_search:
 
 st.divider()
 
-# ── NAVEGACIÓN — siempre visible en todas las páginas ──────────────────────────
+# ── NAVEGACIÓN ─────────────────────────────────────────────────────────────────
 pagina = st.session_state.pagina
-NAV_OPCIONES = ["📊 Dashboard","➕ Nueva orden","👥 Dentistas","📋 Historial","💰 Cobros","⚙️ Perfil"]
 
 NAV_ITEMS = [
     ("📊", "Dashboard",   "📊 Dashboard"),
@@ -377,7 +363,7 @@ def vista_detalle(trabajo_id):
             st.rerun()
 
         st.divider()
-        col_estado, col_cobro, col_pdf = st.columns(3)
+        col_estado, col_cobro, col_pdf, col_delete = st.columns([1.5, 1.5, 1.5, 1.5])
         with col_estado:
             nuevo_estado = st.selectbox("Estado", db.ESTADOS,
                 format_func=lambda x: ESTADO_LABELS.get(x, x),
@@ -394,10 +380,21 @@ def vista_detalle(trabajo_id):
                     st.success("Pago registrado.")
                     st.rerun()
         with col_pdf:
+            st.write("")
             mats = db.obtener_materiales(t["id"])
             pdf_bytes = pdfs.generar_ot(t, mats if mats else None)
             st.download_button("📄 Descargar OT PDF", data=pdf_bytes,
                 file_name=f"OT-{t['id']:04d}.pdf", mime="application/pdf", key=f"pdf_{t['id']}")
+        
+        with col_delete:
+            st.write("")
+            with st.popover("🗑️ Eliminar OT"):
+                st.warning("¿Seguro que deseas borrar esta orden de trabajo?")
+                if st.button("Confirmar eliminación", key=f"confirm_del_{t['id']}"):
+                    db.eliminar_trabajo(t["id"])
+                    st.session_state.detalle_id = None
+                    st.success("Orden eliminada.")
+                    st.rerun()
 
     with tab_mat:
         mats = db.obtener_materiales(t["id"])
