@@ -248,7 +248,7 @@ def generar_ot(trabajo, materiales=None):
     historia.append(HRFlowable(width="100%", color=LINEA_GRIS, thickness=0.5))
     historia.append(Spacer(1, 0.2 * cm))
     historia.append(Paragraph(
-        f"Documento generado el {date.today().strftime('%d/%m/%Y')} · {_get_nombre_lab()}",
+        f"Documento generado por Sincrodent.com el {date.today().strftime('%d/%m/%Y')} · {_get_nombre_lab()}",
         pie,
     ))
 
@@ -409,7 +409,7 @@ def generar_cobro(cliente_nombre, trabajos, mes_label):
     historia.append(HRFlowable(width="100%", color=LINEA_GRIS, thickness=0.5))
     historia.append(Spacer(1, 0.2 * cm))
     historia.append(Paragraph(
-        f"Documento generado el {date.today().strftime('%d/%m/%Y')} · {_get_nombre_lab()}",
+        f"Documento generado por Sincrodent.com el {date.today().strftime('%d/%m/%Y')} · {_get_nombre_lab()}",
         pie,
     ))
 
