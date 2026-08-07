@@ -198,6 +198,7 @@ def obtener_trabajos_activos():
         FROM trabajos t
         JOIN clientes c ON t.cliente_id = c.id
         WHERE t.estado != 'cobrado'
+          AND NOT (t.estado = 'entregado' AND (t.precio IS NULL OR t.precio = 0))
         ORDER BY t.fecha_entrega ASC, t.fecha_ingreso ASC
     """).fetchall()
     conn.close()
