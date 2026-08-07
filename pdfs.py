@@ -1,9 +1,4 @@
-"""
-pdfs.py — Generación de PDFs para el laboratorio dental con soporte para Logo.
-  - generar_ot(trabajo, materiales)  → bytes del PDF de una OT
-  - generar_cobro(cliente, trabajos) → bytes del PDF de orden de cobro mensual
-"""
-
+# pdfs.py — Generación de PDFs optimizados para ahorro de tinta (Printer-Friendly).
 import io
 import os
 from datetime import date
@@ -15,15 +10,13 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image
 )
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
-from config import cfg
 
-# ── Paleta de colores ──────────────────────────────────────────────────────────
-AZUL       = colors.HexColor("#1E3A5F")
-AZUL_CLARO = colors.HexColor("#E8EEF4")
-GRIS       = colors.HexColor("#666666")
-GRIS_CLARO = colors.HexColor("#F5F5F5")
-VERDE      = colors.HexColor("#2E7D32")
-BLANCO     = colors.white
+# ── Paleta de colores "Printer-Friendly" (Ahorro de tinta) ──────────────────────
+AZUL_TEXTO  = colors.HexColor("#0F2A4A") # Azul oscuro profesional solo para texto
+GRIS_TEXTO  = colors.HexColor("#475569") # Texto secundario
+LINEA_GRIS  = colors.HexColor("#CBD5E1") # Líneas y bordes finos
+GRIS_TABLA  = colors.HexColor("#F8FAFC") # Fondo ultra claro para encabezados de tabla
+BLANCO      = colors.white
 
 def _get_nombre_lab():
     from config import cargar
@@ -38,19 +31,19 @@ def _get_logo_path():
 estilos = getSampleStyleSheet()
 
 titulo_lab = ParagraphStyle(
-    "titulo_lab", fontSize=18, textColor=BLANCO,
+    "titulo_lab", fontSize=18, textColor=AZUL_TEXTO,
     fontName="Helvetica-Bold", alignment=TA_LEFT, leading=22,
 )
 subtitulo_lab = ParagraphStyle(
-    "subtitulo_lab", fontSize=10, textColor=AZUL_CLARO,
+    "subtitulo_lab", fontSize=10, textColor=GRIS_TEXTO,
     fontName="Helvetica", alignment=TA_LEFT,
 )
 ot_numero = ParagraphStyle(
-    "ot_numero", fontSize=26, textColor=AZUL,
-    fontName="Helvetica-Bold", alignment=TA_RIGHT, leading=30,
+    "ot_numero", fontSize=24, textColor=AZUL_TEXTO,
+    fontName="Helvetica-Bold", alignment=TA_RIGHT, leading=28,
 )
 label = ParagraphStyle(
-    "label", fontSize=8, textColor=GRIS,
+    "label", fontSize=8, textColor=GRIS_TEXTO,
     fontName="Helvetica-Bold", spaceAfter=1,
 )
 valor = ParagraphStyle(
@@ -58,7 +51,7 @@ valor = ParagraphStyle(
     fontName="Helvetica", spaceAfter=6,
 )
 seccion = ParagraphStyle(
-    "seccion", fontSize=9, textColor=BLANCO,
+    "seccion", fontSize=10, textColor=AZUL_TEXTO,
     fontName="Helvetica-Bold", alignment=TA_LEFT,
 )
 normal = ParagraphStyle(
@@ -66,7 +59,7 @@ normal = ParagraphStyle(
     fontName="Helvetica", leading=13,
 )
 pie = ParagraphStyle(
-    "pie", fontSize=8, textColor=GRIS,
+    "pie", fontSize=8, textColor=GRIS_TEXTO,
     fontName="Helvetica", alignment=TA_CENTER,
 )
 
@@ -74,16 +67,14 @@ pie = ParagraphStyle(
 def _obtener_componente_logo():
     """Retorna un objeto Image si el logo existe, o un Spacer si no se encuentra."""
     if os.path.exists(_get_logo_path()):
-        # Ajustamos el logo a un alto máximo de 1.2 cm manteniendo la proporción
-        return Image(_get_logo_path(), height=1.2 * cm, width=1.2 * cm, kind='proportional')
+        return Image(_get_logo_path(), height=1.3 * cm, width=1.3 * cm, kind='proportional')
     return Spacer(1, 1)
 
 
 def _encabezado_lab(numero_ot):
-    """Tabla de encabezado: logo + nombre laboratorio + número OT."""
+    """Encabezado limpio sin bloques sólidos de color."""
     logo = _obtener_componente_logo()
     
-    # Metemos el logo y los textos en una sub-tabla interna para alinearlos perfectamente
     textos_header = [
         [Paragraph(_get_nombre_lab(), titulo_lab)],
         [Paragraph("Orden de Trabajo", subtitulo_lab)]
@@ -96,8 +87,7 @@ def _encabezado_lab(numero_ot):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
     ]))
 
-    # Estructura de la columna izquierda: [Logo, Bloque de Texto]
-    col_izq = Table([[logo, tabla_textos]], colWidths=[1.5 * cm, 8.5 * cm])
+    col_izq = Table([[logo, tabla_textos]], colWidths=[1.6 * cm, 8.4 * cm])
     col_izq.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
@@ -114,14 +104,13 @@ def _encabezado_lab(numero_ot):
         [[col_izq, col_der]],
         colWidths=[10 * cm, 7.5 * cm],
     )
+    # Reemplazamos el fondo azul sólido por una caja limpia con borde inferior fino
     tabla.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), AZUL),
-        ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING",  (0, 0), (0, 0), 18),
-        ("RIGHTPADDING", (1, 0), (1, 0), 18),
-        ("TOPPADDING",   (0, 0), (-1, -1), 14),
-        ("BOTTOMPADDING",(0, 0), (-1, -1), 14),
-        ("ROUNDEDCORNERS", (0, 0), (-1, -1), [6, 6, 6, 6]),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("LINEBELOW",     (0, 0), (-1, -1), 1.5, AZUL_TEXTO),
     ]))
     return tabla
 
@@ -146,15 +135,16 @@ def _fila_datos(pares):
 
 
 def _titulo_seccion(texto):
+    """Título con fondo blanco y una línea inferior fina (Ahorro de tinta)."""
     tabla = Table(
         [[Paragraph(texto.upper(), seccion)]],
         colWidths=[17.5 * cm],
     )
     tabla.setStyle(TableStyle([
-        ("BACKGROUND",   (0, 0), (-1, -1), AZUL),
-        ("LEFTPADDING",  (0, 0), (-1, -1), 10),
-        ("TOPPADDING",   (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING",(0, 0), (-1, -1), 5),
+        ("LEFTPADDING",  (0, 0), (-1, -1), 0),
+        ("TOPPADDING",   (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 4),
+        ("LINEBELOW",    (0, 0), (-1, -1), 1, LINEA_GRIS),
     ]))
     return tabla
 
@@ -162,12 +152,6 @@ def _titulo_seccion(texto):
 # ── FUNCIÓN PRINCIPAL: OT ─────────────────────────────────────────────────────
 
 def generar_ot(trabajo, materiales=None):
-    """
-    Genera el PDF de una Orden de Trabajo.
-    trabajo   : sqlite3.Row (de obtener_trabajo)
-    materiales: lista de sqlite3.Row (de obtener_materiales), puede ser None
-    Retorna   : bytes del PDF
-    """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
@@ -222,17 +206,15 @@ def generar_ot(trabajo, materiales=None):
 
         tabla_mat = Table(filas_mat, colWidths=[7 * cm, 3 * cm, 4 * cm, 3.5 * cm])
         tabla_mat.setStyle(TableStyle([
-            ("BACKGROUND",   (0, 0), (-1, 0), AZUL_CLARO),
-            ("TEXTCOLOR",    (0, 0), (-1, 0), AZUL),
+            ("BACKGROUND",   (0, 0), (-1, 0), GRIS_TABLA),
+            ("TEXTCOLOR",    (0, 0), (-1, 0), AZUL_TEXTO),
             ("FONTNAME",     (0, 0), (-1, 0), "Helvetica-Bold"),
             ("FONTSIZE",     (0, 0), (-1, -1), 9),
             ("FONTNAME",     (0, -1), (-1, -1), "Helvetica-Bold"),
-            ("BACKGROUND",   (0, -1), (-1, -1), GRIS_CLARO),
             ("ALIGN",        (1, 0), (-1, -1), "CENTER"),
             ("ALIGN",        (-1, 0), (-1, -1), "RIGHT"),
             ("ALIGN",        (-1, -1), (-1, -1), "RIGHT"),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -2), [BLANCO, GRIS_CLARO]),
-            ("GRID",         (0, 0), (-1, -1), 0.5, colors.HexColor("#DDDDDD")),
+            ("GRID",         (0, 0), (-1, -1), 0.5, LINEA_GRIS),
             ("TOPPADDING",   (0, 0), (-1, -1), 5),
             ("BOTTOMPADDING",(0, 0), (-1, -1), 5),
             ("LEFTPADDING",  (0, 0), (-1, -1), 6),
@@ -257,13 +239,13 @@ def generar_ot(trabajo, materiales=None):
     )
     firma.setStyle(TableStyle([
         ("VALIGN",      (0, 0), (-1, -1), "BOTTOM"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
     ]))
     historia.append(firma)
 
     # ── Pie de página ──
     historia.append(Spacer(1, 0.5 * cm))
-    historia.append(HRFlowable(width="100%", color=GRIS, thickness=0.5))
+    historia.append(HRFlowable(width="100%", color=LINEA_GRIS, thickness=0.5))
     historia.append(Spacer(1, 0.2 * cm))
     historia.append(Paragraph(
         f"Documento generado el {date.today().strftime('%d/%m/%Y')} · {_get_nombre_lab()}",
@@ -278,13 +260,6 @@ def generar_ot(trabajo, materiales=None):
 # ── FUNCIÓN PRINCIPAL: ORDEN DE COBRO ─────────────────────────────────────────
 
 def generar_cobro(cliente_nombre, trabajos, mes_label):
-    """
-    Genera el PDF de orden de cobro mensual para un dentista.
-    cliente_nombre : str
-    trabajos       : lista de sqlite3.Row con estado = 'entregado' o 'cobrado'
-    mes_label      : str, ej: "Junio 2026"
-    Retorna        : bytes del PDF
-    """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
@@ -294,7 +269,7 @@ def generar_cobro(cliente_nombre, trabajos, mes_label):
 
     historia = []
 
-    # ── Encabezado con Logo ──
+    # ── Encabezado ──
     logo = _obtener_componente_logo()
     
     textos_header = [
@@ -309,7 +284,7 @@ def generar_cobro(cliente_nombre, trabajos, mes_label):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
     ]))
 
-    col_izq = Table([[logo, tabla_textos]], colWidths=[1.5 * cm, 8.5 * cm])
+    col_izq = Table([[logo, tabla_textos]], colWidths=[1.6 * cm, 8.4 * cm])
     col_izq.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
@@ -323,12 +298,11 @@ def generar_cobro(cliente_nombre, trabajos, mes_label):
         colWidths=[10 * cm, 7.5 * cm],
     )
     encab.setStyle(TableStyle([
-        ("BACKGROUND",   (0, 0), (-1, -1), AZUL),
-        ("VALIGN",       (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING",  (0, 0), (0, 0), 18),
-        ("RIGHTPADDING", (1, 0), (1, 0), 18),
-        ("TOPPADDING",   (0, 0), (-1, -1), 14),
-        ("BOTTOMPADDING",(0, 0), (-1, -1), 14),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("LINEBELOW",     (0, 0), (-1, -1), 1.5, AZUL_TEXTO),
     ]))
     historia.append(encab)
     historia.append(Spacer(1, 0.5 * cm))
@@ -374,15 +348,14 @@ def generar_cobro(cliente_nombre, trabajos, mes_label):
         colWidths=[2 * cm, 3 * cm, 4.5 * cm, 2.5 * cm, 2.5 * cm, 3 * cm],
     )
     tabla_trab.setStyle(TableStyle([
-        ("BACKGROUND",     (0, 0), (-1, 0), AZUL_CLARO),
-        ("TEXTCOLOR",      (0, 0), (-1, 0), AZUL),
+        ("BACKGROUND",     (0, 0), (-1, 0), GRIS_TABLA),
+        ("TEXTCOLOR",      (0, 0), (-1, 0), AZUL_TEXTO),
         ("FONTNAME",       (0, 0), (-1, 0), "Helvetica-Bold"),
         ("FONTSIZE",       (0, 0), (-1, -1), 8),
         ("ALIGN",          (0, 0), (-1, -1), "CENTER"),
         ("ALIGN",          (2, 1), (2, -1), "LEFT"),
         ("ALIGN",          (1, 1), (1, -1), "LEFT"),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [BLANCO, GRIS_CLARO]),
-        ("GRID",           (0, 0), (-1, -1), 0.5, colors.HexColor("#DDDDDD")),
+        ("GRID",           (0, 0), (-1, -1), 0.5, LINEA_GRIS),
         ("TOPPADDING",     (0, 0), (-1, -1), 5),
         ("BOTTOMPADDING",  (0, 0), (-1, -1), 5),
         ("LEFTPADDING",    (0, 0), (-1, -1), 5),
@@ -407,13 +380,12 @@ def generar_cobro(cliente_nombre, trabajos, mes_label):
         ("FONTNAME",       (0, -1), (-1, -1), "Helvetica-Bold"),
         ("FONTSIZE",       (0, 0), (-1, -1), 10),
         ("FONTSIZE",       (0, -1), (-1, -1), 12),
-        ("TEXTCOLOR",      (0, -1), (-1, -1), VERDE),
+        ("TEXTCOLOR",      (0, -1), (-1, -1), AZUL_TEXTO),
         ("ALIGN",          (1, 0), (1, -1), "RIGHT"),
-        ("BACKGROUND",     (0, -1), (-1, -1), colors.HexColor("#E8F5E9")),
-        ("TOPPADDING",     (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING",  (0, 0), (-1, -1), 6),
-        ("LEFTPADDING",    (0, 0), (0, -1), 10),
-        ("LINEABOVE",      (0, -1), (-1, -1), 1.5, VERDE),
+        ("TOPPADDING",     (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING",  (0, 0), (-1, -1), 5),
+        ("LEFTPADDING",    (0, 0), (0, -1), 0),
+        ("LINEABOVE",      (0, -1), (-1, -1), 1, AZUL_TEXTO),
     ]))
     historia.append(resumen)
     historia.append(Spacer(1, 0.6 * cm))
@@ -434,7 +406,7 @@ def generar_cobro(cliente_nombre, trabajos, mes_label):
     historia.append(Spacer(1, 0.8 * cm))
 
     # ── Pie ──
-    historia.append(HRFlowable(width="100%", color=GRIS, thickness=0.5))
+    historia.append(HRFlowable(width="100%", color=LINEA_GRIS, thickness=0.5))
     historia.append(Spacer(1, 0.2 * cm))
     historia.append(Paragraph(
         f"Documento generado el {date.today().strftime('%d/%m/%Y')} · {_get_nombre_lab()}",
