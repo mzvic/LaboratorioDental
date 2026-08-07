@@ -533,7 +533,7 @@ elif pagina == "➕ Nueva orden":
             descripcion = st.text_area("Descripción (color, pieza, material, instrucciones)", height=80)
             c5,c6 = st.columns(2)
             fecha_ingreso = c5.date_input("Fecha de ingreso", value=date.today())
-            fecha_entrega = c6.date_input("Fecha de entrega prometida", value=None)
+            fecha_entrega = c6.date_input("Fecha de entrega prometida", value=None, min_value=date.today())
             c7,c8 = st.columns(2)
             precio = c7.number_input("Precio ($)", min_value=0, step=1000, value=0)
             notas  = c8.text_input("Notas internas (opcional)")

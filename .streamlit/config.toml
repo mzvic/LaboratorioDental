@@ -5,3 +5,5 @@ backgroundColor="#FFFFFF"
 secondaryBackgroundColor="#F0F4F8"
 textColor="#1A1A2E"
 font="sans serif"
+[client]
+language = "es"
