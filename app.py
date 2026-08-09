@@ -13,7 +13,17 @@ st.set_page_config(
 )
 
 db.inicializar_db()
+# ── GESTIÓN DE POPUPS (TOASTS) POST-RERUN ──
+if "toast_msg" not in st.session_state:
+    st.session_state.toast_msg = None
+if "toast_icon" not in st.session_state:
+    st.session_state.toast_icon = None
 
+# Si hay un mensaje guardado de la recarga anterior, muéstralo y límpialo
+if st.session_state.toast_msg:
+    st.toast(st.session_state.toast_msg, icon=st.session_state.toast_icon)
+    st.session_state.toast_msg = None
+    st.session_state.toast_icon = None
 # ── CSS ────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -371,13 +381,16 @@ def vista_detalle(trabajo_id):
             if nuevo_estado != t["estado"]:
                 if st.button("Actualizar estado", key=f"btn_estado_{t['id']}"):
                     db.actualizar_estado(t["id"], nuevo_estado)
+                    st.session_state.toast_msg = f"Estado actualizado a: {nuevo_estado}"
+                    st.session_state.toast_icon = "🔄"
                     st.rerun()
         with col_cobro:
             if t["estado"] == "entregado" and t["precio"]:
                 st.markdown(f'<p style="font-weight:600;color:#15803D;margin-bottom:8px">Cobrar ${t["precio"]:,.0f}</p>', unsafe_allow_html=True)
                 if st.button("✅ Marcar como cobrado", key=f"cobrar_{t['id']}"):
                     db.registrar_pago(t["id"], t["precio"], date.today())
-                    st.success("Pago registrado.")
+                    st.session_state.toast_msg= f"Pago registrado exitosamente"
+                    st.session_state.toast_icon = "💰"
                     st.rerun()
         with col_pdf:
             st.write("")
@@ -393,7 +406,8 @@ def vista_detalle(trabajo_id):
                 if st.button("Confirmar eliminación", key=f"confirm_del_{t['id']}"):
                     db.eliminar_trabajo(t["id"])
                     st.session_state.detalle_id = None
-                    st.success("Orden eliminada.")
+                    st.session_state.toast_msg= f"Material eliminado"
+                    st.session_state.toast_icon = "🗑️"
                     st.rerun()
 
     with tab_mat:
@@ -546,6 +560,8 @@ elif pagina == "➕ Nueva orden":
                 if foto:
                     db.guardar_foto(tid, foto.read(), foto.name.rsplit(".",1)[-1].lower())
                 st.session_state.detalle_id = tid
+                st.session_state.toast_msg= f"¡Orden de trabajo creada con éxito!"
+                st.session_state.toast_icon = "🎉"
                 st.rerun()
 
 elif pagina == "👥 Dentistas":
@@ -677,7 +693,8 @@ elif pagina == "⚙️ Perfil":
                 "LOGO_PATH":      logo_path,
                 "LOGO_APP_PATH":  logo_app_path,
             })
-            st.success("Perfil actualizado correctamente.")
+            st.session_state.toast_msg= f"Configuración guardada correctamente"
+            st.session_state.toast_icon = "⚙️"
             st.rerun()
 
     # Vista previa logos actuales

@@ -205,7 +205,7 @@ if enviado:
 
     if errores:
         for e in errores:
-            st.error(e)
+            st.toast(e, icon="⚠️") # <-- Popup rojo/alerta si hay errores
     else:
         descripcion_completa = (
             f"Color: {color} | Pieza(s): {diente} | Material: {material}"
@@ -229,12 +229,10 @@ if enviado:
             db.guardar_foto(trabajo_id, foto.read(), ext)
 
         ot = db.numero_ot(trabajo_id)
-
         st.success(f"✅ Orden enviada correctamente a {NOMBRE_LABORATORIO}. Su número de seguimiento asignado es **{ot}**.")
-        st.info(
-            f"El laboratorio revisará su solicitud y confirmará la recepción para la fecha estimada del **{fecha_entrega.strftime('%d/%m/%Y')}**."
-        )
-        st.balloons()
+        st.info(f"El laboratorio revisará su solicitud y confirmará la recepción para la fecha estimada del **{fecha_entrega.strftime('%d/%m/%Y')}**.")
+            
+        st.toast("¡Orden enviada con éxito al laboratorio!", icon="🚀")
 
 # ── MIS ÓRDENES ────────────────────────────────────────────────────────────────
 st.divider()
