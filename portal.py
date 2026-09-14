@@ -3,22 +3,56 @@ import streamlit as st
 from datetime import date, timedelta
 import database as db
 import os
+from config import cargar
 
-NOMBRE_LABORATORIO = "Laboratorio OdontoMax"
+_cfg = cargar()
+NOMBRE_LABORATORIO = _cfg["NOMBRE_LAB"] or "Laboratorio Dental"
+LOGO_LAB_PATH = _cfg["LOGO_PATH"]
+LOGO_APP_PATH = _cfg["LOGO_APP_PATH"]
 
 st.set_page_config(
     page_title="Sincrodent — Portal del Dentista",
-    page_icon="Sincrodent.png",
+    page_icon=LOGO_APP_PATH if os.path.exists(LOGO_APP_PATH) else ":material/dentistry:",
     layout="centered",
     initial_sidebar_state="collapsed",
 )
 
 db.inicializar_db()
 
+if _cfg["SETUP_COMPLETO"] != "1":
+    st.error(
+        "Este laboratorio todavía no completó la configuración inicial. "
+        "Pide al administrador que ingrese al panel principal y complete el asistente de configuración."
+    )
+    st.stop()
+
+if os.environ.get("SINCRODENT_DEMO") == "1":
+    st.markdown(
+        '<div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;'
+        'padding:.65rem 1rem;margin:0 0 1rem;font-size:12px;color:#92400E;line-height:1.5">'
+        '<strong>Portal de demostración</strong> — este es un ambiente de prueba abierto a cualquiera. '
+        'Las órdenes que envíes aquí se borran automáticamente cada cierto tiempo. '
+        'No ingreses datos reales de pacientes.'
+        '</div>', unsafe_allow_html=True,
+    )
+
 # ── CSS ────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-html, body, [class*="css"] { font-family: 'Inter', 'Segoe UI', sans-serif; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fredoka:wght@500;600;700&display=swap');
+
+:root {
+    --sc-navy: #022C54;
+    --sc-navy-2: #0B3F70;
+    --sc-teal: #009097;
+    --sc-teal-dark: #00676C;
+    --sc-teal-tint: #E3F5F5;
+    --sc-white: #FEFEFE;
+    --font-brand: 'Fredoka', 'Inter', sans-serif;
+}
+
+html, body, [class*="css"] { font-family: 'Inter', 'Segoe UI', sans-serif; color-scheme: light only; }
+.sc-brand { font-family: var(--font-brand); font-weight: 600; letter-spacing: -.01em; }
 
 /* Ocultar elementos predeterminados de Streamlit */
 section[data-testid="stSidebar"] { display: none !important; }
@@ -35,7 +69,7 @@ header { visibility: hidden; }
 
 /* Botones principales con el Azul de Sincrodent */
 .stButton > button {
-    background: #0F2A4A !important;
+    background: var(--sc-navy) !important;
     color: white !important;
     border: none !important;
     border-radius: 8px !important;
@@ -45,12 +79,17 @@ header { visibility: hidden; }
     transition: background .15s !important;
 }
 .stButton > button:hover { 
-    background: #1E3A5F !important; 
+    background: var(--sc-teal) !important; 
 }
 .stButton > button[kind="secondary"] {
     background: white !important;
-    color: #1E3A5F !important;
+    color: var(--sc-navy) !important;
     border: 1px solid #CBD5E1 !important;
+}
+.stButton > button[kind="secondary"]:hover {
+    background: var(--sc-teal-tint) !important;
+    color: var(--sc-teal-dark) !important;
+    border-color: var(--sc-teal) !important;
 }
 
 /* Inputs y Selectbox */
@@ -60,8 +99,8 @@ header { visibility: hidden; }
     font-size: 14px !important;
 }
 .stTextInput input:focus, .stTextArea textarea:focus {
-    border-color: #008B8B !important;
-    box-shadow: 0 0 0 3px rgba(0,139,139,.08) !important;
+    border-color: var(--sc-teal) !important;
+    box-shadow: 0 0 0 3px rgba(0,144,151,.10) !important;
 }
 
 /* Sección label */
@@ -100,39 +139,41 @@ if not cliente:
 col_logo_lab, col_titulo, col_logo_app = st.columns([1.2, 3.6, 1.2], vertical_alignment="center")
 
 with col_logo_lab:
-    if os.path.exists("logo.jpeg"):
-        st.image("logo.jpeg", width=55)
+    if os.path.exists(LOGO_LAB_PATH):
+        st.image(LOGO_LAB_PATH, width=55)
     else:
-        st.markdown("🏢", unsafe_allow_html=True)
+        st.markdown(':material/local_hospital:', unsafe_allow_html=True)
 
 with col_titulo:
     st.markdown(
-        "<div style='text-align: center;'>"
-        "<h3 class='portal-header-title' style='margin-bottom:0; color:#1E3A5F; font-size:19px; font-weight:700; line-height: 1.2;'>Sincrodent</h3>"
+        "<a href='https://sincrodent.com' target='_blank' style='text-decoration: none; color: inherit; display: block;'>"
+        "<div style='text-align: center; cursor: pointer;'>"
+        "<h3 class='portal-header-title sc-brand' style='margin-bottom:0; font-size:21px; line-height: 1.2;'>"
+        "<span style='color:var(--sc-navy)'>Sincro</span><span style='color:var(--sc-teal)'>dent</span></h3>"
         "<p class='portal-header-sub' style='color:#94A3B8; font-size:11px; margin:2px 0 0 0;'>Portal de Solicitudes para Clínicas y Dentistas</p>"
-        "</div>",
+        "</div>"
+        "</a>",
         unsafe_allow_html=True
     )
 
 with col_logo_app:
     st.markdown("<div style='display: flex; justify-content: flex-end;'>", unsafe_allow_html=True)
-    if os.path.exists("Sincrodent.png"):
-        st.image("Sincrodent.png", width=55)
+    if os.path.exists(LOGO_APP_PATH):
+        st.image(LOGO_APP_PATH, width=55)
     else:
-        st.markdown("🦷", unsafe_allow_html=True)
+        st.markdown(':material/dentistry:', unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-st.divider()
+st.markdown('<hr style="border:none;border-top:2px solid var(--sc-teal-tint);margin:.5rem 0 1.25rem">', unsafe_allow_html=True)
 
 # Bienvenida personalizada
 st.markdown(
-    f'<h1 style="color:#1E3A5F; font-size:22px; font-weight:700; margin-bottom:4px">Hola, {cliente["nombre"]} 👋</h1>'
+    f'<h1 style="color:var(--sc-navy); font-size:22px; font-weight:700; margin-bottom:4px">Hola, {cliente["nombre"]}</h1>'
     f'<p style="color:#94A3B8; font-size:13px; margin-bottom:1.5rem">'
     f'Complete el formulario a continuación para enviar una nueva orden directamente al laboratorio.</p>',
     unsafe_allow_html=True,
 )
-
-st.markdown('<p style="font-size:0.85rem; color:#64748B;">Los campos marcados con <span style="color:#008B8B; font-weight:bold;">*</span> son obligatorios.</p>', unsafe_allow_html=True)
+st.markdown('<p style="font-size:0.85rem; color:#64748B;">Los campos marcados con <span style="color:var(--sc-teal); font-weight:bold;">*</span> son obligatorios.</p>', unsafe_allow_html=True)
 
 with st.form("form_portal", clear_on_submit=True):
 
@@ -191,7 +232,7 @@ with st.form("form_portal", clear_on_submit=True):
     )
 
     st.divider()
-    enviado = st.form_submit_button(f"📤 Enviar orden a {NOMBRE_LABORATORIO}", type="primary", use_container_width=True)
+    enviado = st.form_submit_button(f"Enviar orden a {NOMBRE_LABORATORIO}", type="primary", use_container_width=True, icon=":material/send:")
 
 # ── Procesar envío ──────────────────────────────────────────────────────────────
 if enviado:
@@ -205,7 +246,7 @@ if enviado:
 
     if errores:
         for e in errores:
-            st.toast(e, icon="⚠️") # <-- Popup rojo/alerta si hay errores
+            st.toast(e, icon=":material/error:") # <-- Popup rojo/alerta si hay errores
     else:
         descripcion_completa = (
             f"Color: {color} | Pieza(s): {diente} | Material: {material}"
@@ -229,15 +270,15 @@ if enviado:
             db.guardar_foto(trabajo_id, foto.read(), ext)
 
         ot = db.numero_ot(trabajo_id)
-        st.success(f"✅ Orden enviada correctamente a {NOMBRE_LABORATORIO}. Su número de seguimiento asignado es **{ot}**.")
+        st.success(f"Orden enviada correctamente a {NOMBRE_LABORATORIO}. Su número de seguimiento asignado es **{ot}**.", icon=":material/check_circle:")
         st.info(f"El laboratorio revisará su solicitud y confirmará la recepción para la fecha estimada del **{fecha_entrega.strftime('%d/%m/%Y')}**.")
             
-        st.toast("¡Orden enviada con éxito al laboratorio!", icon="🚀")
+        st.toast("¡Orden enviada con éxito al laboratorio!", icon=":material/check_circle:")
 
 # ── MIS ÓRDENES ────────────────────────────────────────────────────────────────
 st.divider()
 st.markdown(
-    '<h2 style="color:#1E3A5F;font-size:20px;font-weight:700;margin-bottom:4px">Mis órdenes</h2>'
+    '<h2 style="color:var(--sc-navy);font-size:20px;font-weight:700;margin-bottom:4px">Mis órdenes</h2>'
     '<p style="color:#94A3B8;font-size:13px;margin-bottom:1rem">Estado actual de sus trabajos en el laboratorio.</p>',
     unsafe_allow_html=True,
 )
@@ -279,5 +320,3 @@ else:
                 st.image(t["foto_path"], width=200)
 
             st.divider()
-            
-           

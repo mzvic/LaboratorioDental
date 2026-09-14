@@ -43,6 +43,7 @@ def conectar():
 
 
 def inicializar_db():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     os.makedirs(FOTOS_DIR, exist_ok=True)
     conn = conectar()
     c = conn.cursor()

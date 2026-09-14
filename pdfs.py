@@ -12,7 +12,8 @@ from reportlab.platypus import (
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 
 # ── Paleta de colores "Printer-Friendly" (Ahorro de tinta) ──────────────────────
-AZUL_TEXTO  = colors.HexColor("#0F2A4A") # Azul oscuro profesional solo para texto
+AZUL_TEXTO  = colors.HexColor("#022C54") # Navy oficial de marca Sincrodent
+TEAL_MARCA  = colors.HexColor("#009097") # Teal oficial de marca Sincrodent
 GRIS_TEXTO  = colors.HexColor("#475569") # Texto secundario
 LINEA_GRIS  = colors.HexColor("#CBD5E1") # Líneas y bordes finos
 GRIS_TABLA  = colors.HexColor("#F8FAFC") # Fondo ultra claro para encabezados de tabla
@@ -20,11 +21,17 @@ BLANCO      = colors.white
 
 def _get_nombre_lab():
     from config import cargar
-    return cargar()["NOMBRE_LAB"]
+    nombre = cargar()["NOMBRE_LAB"]
+    return nombre if nombre else "Laboratorio Dental"
 
 def _get_logo_path():
     from config import cargar
     p = cargar()["LOGO_PATH"]
+    return os.path.join(os.path.dirname(__file__), p)
+
+def _get_logo_app_path():
+    from config import cargar
+    p = cargar()["LOGO_APP_PATH"]
     return os.path.join(os.path.dirname(__file__), p)
 
 # ── Estilos reutilizables ──────────────────────────────────────────────────────
@@ -62,6 +69,10 @@ pie = ParagraphStyle(
     "pie", fontSize=8, textColor=GRIS_TEXTO,
     fontName="Helvetica", alignment=TA_CENTER,
 )
+pie_izq = ParagraphStyle(
+    "pie_izq", fontSize=8, textColor=GRIS_TEXTO,
+    fontName="Helvetica", alignment=TA_LEFT,
+)
 
 
 def _obtener_componente_logo():
@@ -69,6 +80,33 @@ def _obtener_componente_logo():
     if os.path.exists(_get_logo_path()):
         return Image(_get_logo_path(), height=1.3 * cm, width=1.3 * cm, kind='proportional')
     return Spacer(1, 1)
+
+
+def _obtener_isotipo_sincrodent(alto=0.5 * cm):
+    """Retorna el isotipo Sincrodent.png si existe, o None."""
+    ruta = _get_logo_app_path()
+    if os.path.exists(ruta):
+        return Image(ruta, height=alto, width=alto, kind='proportional')
+    return None
+
+
+def _pie_pagina(anonimizar):
+    """Pie de página con el isotipo de Sincrodent + texto de trazabilidad."""
+    pie_txt = f"Documento generado con Sincrodent el {date.today().strftime('%d/%m/%Y')} · {_get_nombre_lab()}"
+    if anonimizar:
+        pie_txt += " · Identidad del paciente protegida (Ley 20.584)"
+    isotipo = _obtener_isotipo_sincrodent(alto=0.42 * cm)
+    if isotipo is not None:
+        tabla = Table([[isotipo, Paragraph(pie_txt, pie_izq)]], colWidths=[0.7 * cm, 16.8 * cm])
+        tabla.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        return tabla
+    return Paragraph(pie_txt, pie)
 
 
 def _encabezado_lab(numero_ot):
@@ -96,10 +134,11 @@ def _encabezado_lab(numero_ot):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
 
-    col_der = [
-        Paragraph(numero_ot, ot_numero),
-    ]
-    
+    col_der = [Paragraph(numero_ot, ot_numero)]
+    isotipo = _obtener_isotipo_sincrodent(alto=0.6 * cm)
+    if isotipo is not None:
+        col_der = [isotipo, Spacer(1, 3), Paragraph(numero_ot, ot_numero)]
+
     tabla = Table(
         [[col_izq, col_der]],
         colWidths=[10 * cm, 7.5 * cm],
@@ -111,6 +150,7 @@ def _encabezado_lab(numero_ot):
         ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
         ("LINEBELOW",     (0, 0), (-1, -1), 1.5, AZUL_TEXTO),
+        ("ALIGN",         (1, 0), (1, 0), "RIGHT"),
     ]))
     return tabla
 
@@ -151,7 +191,13 @@ def _titulo_seccion(texto):
 
 # ── FUNCIÓN PRINCIPAL: OT ─────────────────────────────────────────────────────
 
-def generar_ot(trabajo, materiales=None):
+def generar_ot(trabajo, materiales=None, anonimizar=False):
+    """Genera el PDF de la Orden de Trabajo.
+
+    Si anonimizar=True (entidad pública sujeta a Ley 20.584 y sesión sin
+    privilegios de administrador), el nombre del paciente se reemplaza por
+    sus iniciales en el documento.
+    """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
@@ -163,6 +209,13 @@ def generar_ot(trabajo, materiales=None):
     es_conf = trabajo["notas"] and trabajo["notas"].startswith("[confidencial]")
     cliente_pdf = "Confidencial" if es_conf else trabajo["cliente_nombre"]
     notas_pdf = trabajo["notas"].replace("[confidencial] ", "").replace("[confidencial]", "").strip() if trabajo["notas"] else None
+
+    if anonimizar:
+        from config import anonimizar_nombre
+        paciente_pdf = anonimizar_nombre(trabajo["paciente"])
+    else:
+        paciente_pdf = trabajo["paciente"]
+
     historia = []
 
     # ── Encabezado ──
@@ -174,7 +227,7 @@ def generar_ot(trabajo, materiales=None):
     historia.append(Spacer(1, 0.2 * cm))
     historia.append(_fila_datos([
         ("CLIENTE",          cliente_pdf),
-        ("PACIENTE",         trabajo["paciente"]),
+        ("PACIENTE",         paciente_pdf),
         ("TIPO",             trabajo["tipo_trabajo"]),
         ("NOMBRE TRABAJO",   trabajo["nombre"]),
         ("DESCRIPCIÓN",      trabajo["descripcion"]),
@@ -247,10 +300,7 @@ def generar_ot(trabajo, materiales=None):
     historia.append(Spacer(1, 0.5 * cm))
     historia.append(HRFlowable(width="100%", color=LINEA_GRIS, thickness=0.5))
     historia.append(Spacer(1, 0.2 * cm))
-    historia.append(Paragraph(
-        f"Documento generado por Sincrodent.com el {date.today().strftime('%d/%m/%Y')} · {_get_nombre_lab()}",
-        pie,
-    ))
+    historia.append(_pie_pagina(anonimizar))
 
     doc.build(historia)
     buffer.seek(0)
@@ -259,7 +309,7 @@ def generar_ot(trabajo, materiales=None):
 
 # ── FUNCIÓN PRINCIPAL: ORDEN DE COBRO ─────────────────────────────────────────
 
-def generar_cobro(cliente_nombre, trabajos, mes_label):
+def generar_cobro(cliente_nombre, trabajos, mes_label, anonimizar=False):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
@@ -293,8 +343,13 @@ def generar_cobro(cliente_nombre, trabajos, mes_label):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
 
+    col_der_cobro = [Paragraph(mes_label, ot_numero)]
+    isotipo_cobro = _obtener_isotipo_sincrodent(alto=0.6 * cm)
+    if isotipo_cobro is not None:
+        col_der_cobro = [isotipo_cobro, Spacer(1, 3), Paragraph(mes_label, ot_numero)]
+
     encab = Table(
-        [[col_izq, [Paragraph(mes_label, ot_numero)]]],
+        [[col_izq, col_der_cobro]],
         colWidths=[10 * cm, 7.5 * cm],
     )
     encab.setStyle(TableStyle([
@@ -303,6 +358,7 @@ def generar_cobro(cliente_nombre, trabajos, mes_label):
         ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
         ("LINEBELOW",     (0, 0), (-1, -1), 1.5, AZUL_TEXTO),
+        ("ALIGN",         (1, 0), (1, 0), "RIGHT"),
     ]))
     historia.append(encab)
     historia.append(Spacer(1, 0.5 * cm))
@@ -334,9 +390,14 @@ def generar_cobro(cliente_nombre, trabajos, mes_label):
         else:
             pendiente += precio
 
+        paciente_fila = t["paciente"] or "—"
+        if anonimizar and t["paciente"]:
+            from config import anonimizar_nombre
+            paciente_fila = anonimizar_nombre(t["paciente"])
+
         filas.append([
             f"OT-{t['id']:04d}",
-            t["paciente"] or "—",
+            paciente_fila,
             t["nombre"] or t["tipo_trabajo"],
             t["fecha_entrega"] or "—",
             t["estado"].upper(),
@@ -408,10 +469,7 @@ def generar_cobro(cliente_nombre, trabajos, mes_label):
     # ── Pie ──
     historia.append(HRFlowable(width="100%", color=LINEA_GRIS, thickness=0.5))
     historia.append(Spacer(1, 0.2 * cm))
-    historia.append(Paragraph(
-        f"Documento generado por Sincrodent.com el {date.today().strftime('%d/%m/%Y')} · {_get_nombre_lab()}",
-        pie,
-    ))
+    historia.append(_pie_pagina(anonimizar))
 
     doc.build(historia)
     buffer.seek(0)

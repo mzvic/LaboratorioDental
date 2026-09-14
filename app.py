@@ -3,7 +3,11 @@ from datetime import date, datetime
 import os
 import database as db
 import pdfs
-from config import cfg, guardar_todo, cargar
+from config import (
+    cfg, guardar_todo, cargar,
+    entidad_es_publica, establecer_password_admin,
+    verificar_password_admin, hay_password_admin, anonimizar_nombre,
+)
 
 st.set_page_config(
     page_title="Sincrodent — Laboratorio Dental",
@@ -13,6 +17,18 @@ st.set_page_config(
 )
 
 db.inicializar_db()
+
+if os.environ.get("SINCRODENT_DEMO") == "1":
+    st.markdown(
+        '<div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;'
+        'padding:.65rem 1rem;margin-bottom:1rem;font-size:13px;color:#92400E;line-height:1.5">'
+        '<strong>Ambiente de demostración</strong> — cualquiera puede entrar y probar el sistema. '
+        'Todas las órdenes, clientes y fotos que se creen aquí <strong>se borran automáticamente</strong> '
+        'de forma periódica. No ingreses datos reales de pacientes ni de clientes.<br>'
+        f'Contraseña de administrador para probar la vista protegida (Ley 20.584): '
+        f'<code>{os.environ.get("SINCRODENT_DEMO_ADMIN_PASS", "demo2026")}</code>'
+        '</div>', unsafe_allow_html=True,
+    )
 # ── GESTIÓN DE POPUPS (TOASTS) POST-RERUN ──
 if "toast_msg" not in st.session_state:
     st.session_state.toast_msg = None
@@ -24,10 +40,23 @@ if st.session_state.toast_msg:
     st.toast(st.session_state.toast_msg, icon=st.session_state.toast_icon)
     st.session_state.toast_msg = None
     st.session_state.toast_icon = None
-# ── CSS ────────────────────────────────────────────────────────────────────────
+# ── CSS · IDENTIDAD DE MARCA SINCRODENT ────────────────────────────────────────
 st.markdown("""
 <style>
-html, body, [class*="css"] { font-family: 'Inter', 'Segoe UI', sans-serif; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fredoka:wght@500;600;700&display=swap');
+
+:root {
+    --sc-navy: #022C54;
+    --sc-navy-2: #0B3F70;
+    --sc-teal: #009097;
+    --sc-teal-dark: #00676C;
+    --sc-teal-tint: #E3F5F5;
+    --sc-white: #FEFEFE;
+    --font-brand: 'Fredoka', 'Inter', sans-serif;
+}
+
+html, body, [class*="css"] { font-family: 'Inter', 'Segoe UI', sans-serif; color-scheme: light only; }
+.sc-brand { font-family: var(--font-brand); font-weight: 600; letter-spacing: -.01em; }
 
 /* Ocultar sidebar y branding Streamlit */
 section[data-testid="stSidebar"] { display: none !important; }
@@ -70,13 +99,13 @@ header { visibility: hidden; }
 [data-testid="stMetricValue"] {
     font-size: 26px !important;
     font-weight: 700 !important;
-    color: #1E3A5F !important;
+    color: var(--sc-navy) !important;
     letter-spacing: -.02em;
 }
 
 /* Botones */
 .stButton > button {
-    background: #0F2A4A !important;
+    background: var(--sc-navy) !important;
     color: white !important;
     border: none !important;
     border-radius: 8px !important;
@@ -86,12 +115,17 @@ header { visibility: hidden; }
     transition: background .15s !important;
 }
 .stButton > button:hover { 
-    background: #1E3A5F !important; 
+    background: var(--sc-teal) !important; 
 }
 .stButton > button[kind="secondary"] {
     background: white !important;
-    color: #1E3A5F !important;
+    color: var(--sc-navy) !important;
     border: 1px solid #CBD5E1 !important;
+}
+.stButton > button[kind="secondary"]:hover {
+    background: var(--sc-teal-tint) !important;
+    color: var(--sc-teal-dark) !important;
+    border-color: var(--sc-teal) !important;
 }
 
 /* Expanders */
@@ -100,7 +134,7 @@ header { visibility: hidden; }
     border: 1px solid #E2E8F0 !important;
     border-radius: 10px !important;
     font-weight: 500 !important;
-    color: #1A1A2E !important;
+    color: var(--sc-navy) !important;
     font-size: 14px !important;
 }
 [data-testid="stExpander"] { border: none !important; }
@@ -121,8 +155,8 @@ header { visibility: hidden; }
     background: transparent;
 }
 .stTabs [aria-selected="true"] {
-    color: #008B8B !important;
-    border-bottom: 2px solid #008B8B !important;
+    color: var(--sc-teal) !important;
+    border-bottom: 2px solid var(--sc-teal) !important;
 }
 .stTabs [data-baseweb="tab-border"] { display: none !important; }
 
@@ -133,7 +167,7 @@ header { visibility: hidden; }
     font-size: 14px !important;
 }
 .stTextInput input:focus, .stTextArea textarea:focus {
-    border-color: #1E3A5F !important;
+    border-color: var(--sc-navy) !important;
     box-shadow: 0 0 0 3px rgba(30,58,95,.08) !important;
 }
 
@@ -211,7 +245,7 @@ header { visibility: hidden; }
     margin-bottom: 14px;
 }
 .info-label { font-size: 11px; font-weight: 600; color: #94A3B8; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
-.info-value { font-size: 14px; font-weight: 500; color: #1A1A2E; }
+.info-value { font-size: 14px; font-weight: 500; color: var(--sc-navy); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -219,9 +253,9 @@ header { visibility: hidden; }
 BADGE_ESTADO = {
     "pendiente":  '<span class="badge badge-pendiente">Pendiente</span>',
     "en_proceso": '<span class="badge badge-en_proceso">En proceso</span>',
-    "listo":      '<span class="badge badge-listo">Listo ✓</span>',
+    "listo":      '<span class="badge badge-listo">Listo</span>',
     "entregado":  '<span class="badge badge-entregado">Entregado</span>',
-    "cobrado":    '<span class="badge badge-cobrado">Cobrado ✓</span>',
+    "cobrado":    '<span class="badge badge-cobrado">Cobrado</span>',
 }
 
 ESTADO_LABELS = {
@@ -240,12 +274,148 @@ MESES_ES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio",
 MESES_FULL = ["enero","febrero","marzo","abril","mayo","junio",
               "julio","agosto","septiembre","octubre","noviembre","diciembre"]
 DIAS_ES = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"]
-PORTAL_BASE = "http://portal.odontomax.mzvic.xyz"
+_cfg_actual = cargar()
+PORTAL_BASE = _cfg_actual["PORTAL_BASE"]
 
 if "detalle_id" not in st.session_state:
     st.session_state.detalle_id = None
 if "pagina" not in st.session_state:
-    st.session_state.pagina = "📊 Dashboard"
+    st.session_state.pagina = "Dashboard"
+if "es_admin" not in st.session_state:
+    st.session_state.es_admin = False
+
+
+# ── LEY 20.584 — ANONIMIZACIÓN DE PACIENTES PARA ENTIDADES PÚBLICAS ────────────
+def modo_anonimo_activo():
+    """True si corresponde ocultar la identidad del paciente en esta sesión."""
+    return entidad_es_publica() and not st.session_state.es_admin
+
+
+def mostrar_paciente(nombre):
+    """Devuelve el nombre del paciente, o sus iniciales si el modo anónimo está activo."""
+    if not nombre:
+        return "—"
+    if modo_anonimo_activo():
+        return anonimizar_nombre(nombre)
+    return nombre
+
+
+# ── ASISTENTE DE CONFIGURACIÓN INICIAL (primera vez que se abre el sistema) ────
+def vista_configuracion_inicial():
+    st.markdown(
+        '<h1 style="color:var(--sc-navy);font-size:24px;font-weight:700;margin-bottom:2px">Bienvenido a Sincrodent</h1>'
+        '<p style="color:#94A3B8;font-size:13px;margin-bottom:1.5rem">'
+        'Antes de empezar, completa los datos de tu laboratorio. Esto solo se pide una vez '
+        'y se puede editar después desde Perfil.</p>',
+        unsafe_allow_html=True,
+    )
+
+    _c = cargar()
+
+    st.markdown('<div class="section-label">Tipo de entidad</div>', unsafe_allow_html=True)
+    tipo_entidad_label = st.radio(
+        "¿Qué tipo de laboratorio/entidad es?",
+        ["Laboratorio privado", "Institución / entidad pública"],
+        index=0,
+        help="Si eres una entidad pública, el sistema exige activar la protección de "
+             "identidad de pacientes conforme a la Ley 20.584 (ver más abajo).",
+    )
+    es_publica_sel = tipo_entidad_label.startswith("Institución")
+
+    if es_publica_sel:
+        st.info(
+            "**Ley 20.584 — Protección de datos de pacientes**\n\n"
+            "Como entidad pública, el sistema ocultará el nombre de los pacientes "
+            "(mostrará solo iniciales) para cualquier persona que use el sistema. "
+            "Debes definir una **contraseña de administrador**: solo quien la conozca "
+            "podrá desbloquear el nombre completo de los pacientes y descargar "
+            "documentos con la identidad completa."
+        )
+
+    with st.form("form_setup_inicial"):
+        st.markdown('<div class="section-label">Datos del laboratorio</div>', unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        nombre_lab = c1.text_input("Nombre del laboratorio *", value=_c["NOMBRE_LAB"])
+        rut        = c2.text_input("RUT del laboratorio", value=_c["RUT_LAB"])
+        c3, c4 = st.columns(2)
+        telefono   = c3.text_input("Teléfono", value=_c["TELEFONO_LAB"])
+        email      = c4.text_input("Email", value=_c["EMAIL_LAB"])
+        direccion  = st.text_input("Dirección", value=_c["DIRECCION_LAB"])
+
+        st.markdown('<div class="section-label">Datos bancarios (aparecen en el PDF de cobro)</div>', unsafe_allow_html=True)
+        c5, c6 = st.columns(2)
+        banco       = c5.text_input("Banco", value=_c["BANCO"])
+        tipo_cuenta = c6.text_input("Tipo de cuenta", value=_c["TIPO_CUENTA"])
+        c7, c8 = st.columns(2)
+        num_cuenta  = c7.text_input("Número de cuenta", value=_c["NUMERO_CUENTA"])
+        titular     = c8.text_input("Nombre del titular", value=_c["NOMBRE_TITULAR"])
+
+        st.markdown('<div class="section-label">Portal para dentistas</div>', unsafe_allow_html=True)
+        portal_base = st.text_input(
+            "URL base del portal", value=_c["PORTAL_BASE"],
+            help="La dirección donde tus dentistas accederán a enviar órdenes. Pídesela a quien te instaló el sistema si no la sabes.",
+        )
+
+        st.markdown('<div class="section-label">Logo del laboratorio (opcional)</div>', unsafe_allow_html=True)
+        logo_subido = st.file_uploader("Sube el logo de tu laboratorio", type=["jpg", "jpeg", "png"])
+
+        admin_pass1, admin_pass2 = "", ""
+        if es_publica_sel:
+            st.markdown('<div class="section-label">Contraseña de administrador (obligatoria)</div>', unsafe_allow_html=True)
+            c9, c10 = st.columns(2)
+            admin_pass1 = c9.text_input("Contraseña", type="password")
+            admin_pass2 = c10.text_input("Repite la contraseña", type="password")
+
+        enviado = st.form_submit_button("Guardar y comenzar a usar Sincrodent", type="primary", use_container_width=True, icon=":material/rocket_launch:")
+
+    if enviado:
+        errores = []
+        if not nombre_lab.strip():
+            errores.append("El nombre del laboratorio es obligatorio.")
+        if es_publica_sel:
+            if not admin_pass1 or len(admin_pass1) < 4:
+                errores.append("Define una contraseña de administrador de al menos 4 caracteres.")
+            elif admin_pass1 != admin_pass2:
+                errores.append("Las contraseñas de administrador no coinciden.")
+
+        if errores:
+            for e in errores:
+                st.error(e)
+            return
+
+        logo_path_final = _c["LOGO_PATH"]
+        if logo_subido is not None:
+            ext = logo_subido.name.rsplit(".", 1)[-1].lower()
+            logo_path_final = f"logo_lab.{ext}"
+            with open(os.path.join(os.path.dirname(__file__), logo_path_final), "wb") as f:
+                f.write(logo_subido.read())
+
+        guardar_todo({
+            "NOMBRE_LAB":     nombre_lab.strip(),
+            "RUT_LAB":        rut.strip(),
+            "TELEFONO_LAB":   telefono.strip(),
+            "EMAIL_LAB":      email.strip(),
+            "DIRECCION_LAB":  direccion.strip(),
+            "BANCO":          banco.strip(),
+            "TIPO_CUENTA":    tipo_cuenta.strip(),
+            "NUMERO_CUENTA":  num_cuenta.strip(),
+            "NOMBRE_TITULAR": titular.strip(),
+            "PORTAL_BASE":    portal_base.strip() or _c["PORTAL_BASE"],
+            "LOGO_PATH":      logo_path_final,
+            "TIPO_ENTIDAD":   "publica" if es_publica_sel else "privada",
+            "SETUP_COMPLETO": "1",
+        })
+        if es_publica_sel:
+            establecer_password_admin(admin_pass1)
+
+        st.session_state.toast_msg = "¡Configuración guardada! Bienvenido a Sincrodent."
+        st.session_state.toast_icon = ":material/celebration:"
+        st.rerun()
+
+
+if _cfg_actual["SETUP_COMPLETO"] != "1" or os.environ.get("SINCRODENT_FORZAR_SETUP") == "1":
+    vista_configuracion_inicial()
+    st.stop()
 
 
 # ── HELPERS ────────────────────────────────────────────────────────────────────
@@ -266,7 +436,7 @@ def fila_trabajo(t):
         col_datos, col_btn = st.columns([3, 1])
         with col_datos:
             if t["paciente"]:
-                st.markdown(f'👤 **{t["paciente"]}**')
+                st.markdown(f'**{mostrar_paciente(t["paciente"])}**')
             badge = BADGE_ESTADO.get(t["estado"], "")
             badge_a = ' <span class="badge badge-atrasado">⚠ Atrasado</span>' if es_atrasado(t) else ""
             st.markdown(f'{badge}{badge_a}', unsafe_allow_html=True)
@@ -281,34 +451,68 @@ def fila_trabajo(t):
 
 
 # ── TOPNAV ─────────────────────────────────────────────────────────────────────
-col_logo, col_search = st.columns([1, 4])
+if entidad_es_publica():
+    col_logo, col_search, col_admin = st.columns([1, 3, 1])
+else:
+    col_logo, col_search = st.columns([1, 4])
+
 with col_logo:
-    if os.path.exists("logo.jpeg"):
-        st.image("Sincrodent_Logotipo_SinFondo.png", width=200)
+    if os.path.exists(_cfg_actual["LOGO_PATH"]):
+        st.image(_cfg_actual["LOGO_PATH"], width=120)
+    elif _cfg_actual["NOMBRE_LAB"]:
+        st.markdown(f'<p class="sc-brand" style="color:var(--sc-navy);font-size:17px;margin:8px 0 0">{_cfg_actual["NOMBRE_LAB"]}</p>', unsafe_allow_html=True)
+    st.markdown(
+        '<p style="font-size:10px;color:#94A3B8;margin:2px 0 0">impulsado por '
+        '<span class="sc-brand" style="font-size:11px">'
+        '<span style="color:var(--sc-navy)">Sincro</span><span style="color:var(--sc-teal)">dent</span>'
+        '</span></p>', unsafe_allow_html=True,
+    )
 with col_search:
-    busqueda = st.text_input("buscar", placeholder="🔍  Buscar OT o paciente...",
+    busqueda = st.text_input("buscar", placeholder="Buscar OT o paciente...",
         label_visibility="collapsed", key="busqueda_top")
 
-st.divider()
+if entidad_es_publica():
+    with col_admin:
+        if st.session_state.es_admin:
+            st.markdown('<p style="color:#16A34A;font-size:12px;font-weight:600;margin-top:6px">Modo administrador activo</p>', unsafe_allow_html=True)
+            if st.button("Cerrar modo admin", key="cerrar_admin", type="secondary", use_container_width=True, icon=":material/lock:"):
+                st.session_state.es_admin = False
+                st.rerun()
+        else:
+            with st.popover("Ver pacientes (admin)", use_container_width=True, icon=":material/lock_open:"):
+                st.caption("Ley 20.584 — los nombres de pacientes están protegidos por defecto.")
+                if not hay_password_admin():
+                    st.warning("No hay una contraseña de administrador configurada. Ve a Perfil para definirla.")
+                else:
+                    pw = st.text_input("Contraseña de administrador", type="password", key="pw_admin_topnav")
+                    if st.button("Desbloquear", key="btn_desbloquear_admin", icon=":material/key:"):
+                        if verificar_password_admin(pw):
+                            st.session_state.es_admin = True
+                            st.rerun()
+                        else:
+                            st.error("Contraseña incorrecta.")
+
+st.markdown('<hr style="border:none;border-top:2px solid var(--sc-teal-tint);margin:.5rem 0 1.25rem">', unsafe_allow_html=True)
 
 # ── NAVEGACIÓN ─────────────────────────────────────────────────────────────────
 pagina = st.session_state.pagina
 
-NAV_ITEMS = [
-    ("📊", "Dashboard",   "📊 Dashboard"),
-    ("➕", "Nueva orden", "➕ Nueva orden"),
-    ("👥", "Dentistas",   "👥 Dentistas"),
-    ("📋", "Historial",   "📋 Historial"),
-    ("💰", "Cobros",      "💰 Cobros"),
-    ("⚙️", "Perfil",     "⚙️ Perfil"),
-]
+NAV_ITEMS = ["Dashboard", "Nueva orden", "Dentistas", "Historial", "Cobros", "Perfil"]
+NAV_ICONS = {
+    "Dashboard":   ":material/dashboard:",
+    "Nueva orden": ":material/add_circle:",
+    "Dentistas":   ":material/groups:",
+    "Historial":   ":material/history:",
+    "Cobros":      ":material/payments:",
+    "Perfil":      ":material/settings:",
+}
 nav_cols = st.columns(6)
-for col, (icon, label, key) in zip(nav_cols, NAV_ITEMS):
+for col, key in zip(nav_cols, NAV_ITEMS):
     with col:
         active = (pagina == key and st.session_state.detalle_id is None and not busqueda.strip())
-        indicator = f'<div style="height:3px;background:#1E3A5F;border-radius:2px;margin-bottom:4px"></div>' if active else '<div style="height:3px;margin-bottom:4px"></div>'
+        indicator = f'<div style="height:3px;background:var(--sc-navy);border-radius:2px;margin-bottom:4px"></div>' if active else '<div style="height:3px;margin-bottom:4px"></div>'
         st.markdown(indicator, unsafe_allow_html=True)
-        if st.button(f"{icon} {label}", key=f"nav_{key}", use_container_width=True):
+        if st.button(key, key=f"nav_{key}", use_container_width=True, icon=NAV_ICONS[key]):
             st.session_state.pagina = key
             st.session_state.detalle_id = None
             st.rerun()
@@ -324,7 +528,7 @@ def vista_detalle(trabajo_id):
         st.session_state.detalle_id = None
         return
 
-    if st.button("← Volver", type="secondary"):
+    if st.button("Volver", type="secondary", icon=":material/arrow_back:"):
         st.session_state.detalle_id = None
         st.rerun()
 
@@ -337,18 +541,18 @@ def vista_detalle(trabajo_id):
     atraso = ' <span class="badge badge-atrasado">⚠ Atrasado</span>' if es_atrasado(t) else ""
 
     st.markdown(
-        f'<h1 style="color:#1E3A5F;font-size:24px;font-weight:700;margin-bottom:6px">{ot} — {nombre_mostrar}</h1>'
+        f'<h1 style="color:var(--sc-navy);font-size:24px;font-weight:700;margin-bottom:6px">{ot} — {nombre_mostrar}</h1>'
         f'<div style="margin-bottom:1.25rem">{badge}{atraso}</div>',
         unsafe_allow_html=True,
     )
 
-    tab_info, tab_mat, tab_edit = st.tabs(["📋 Información", "📦 Elementos utilizados", "✏️ Editar Orden"])
+    tab_info, tab_mat, tab_edit = st.tabs(["Información", "Elementos utilizados", "Editar Orden"])
 
     with tab_info:
         st.markdown(
             f'<div class="info-box"><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">'
             f'<div><div class="info-label">Cliente</div><div class="info-value">{cliente_mostrar}</div></div>'
-            f'<div><div class="info-label">Paciente</div><div class="info-value">{t["paciente"] or "—"}</div></div>'
+            f'<div><div class="info-label">Paciente</div><div class="info-value">{mostrar_paciente(t["paciente"])}</div></div>'
             f'<div><div class="info-label">Tipo</div><div class="info-value">{t["tipo_trabajo"]}</div></div>'
             f'<div><div class="info-label">Ingreso</div><div class="info-value">{t["fecha_ingreso"]}</div></div>'
             f'<div><div class="info-label">Entrega</div><div class="info-value">{t["fecha_entrega"] or "—"}</div></div>'
@@ -363,13 +567,14 @@ def vista_detalle(trabajo_id):
                 unsafe_allow_html=True,
             )
         if notas_limpias:
-            st.caption(f"📝 {notas_limpias}")
+            st.caption(notas_limpias)
         if t["foto_path"] and os.path.exists(t["foto_path"]):
             st.image(t["foto_path"], width=300)
         foto_nueva = st.file_uploader("Subir / reemplazar foto", type=["jpg","jpeg","png"], key=f"foto_{t['id']}")
         if foto_nueva:
             db.guardar_foto(t["id"], foto_nueva.read(), foto_nueva.name.rsplit(".",1)[-1].lower())
-            st.success("Foto guardada.")
+            st.session_state.toast_msg = "Foto guardada."
+            st.session_state.toast_icon = ":material/photo_camera:"
             st.rerun()
 
         st.divider()
@@ -379,35 +584,35 @@ def vista_detalle(trabajo_id):
                 format_func=lambda x: ESTADO_LABELS.get(x, x),
                 index=db.ESTADOS.index(t["estado"]), key=f"estado_{t['id']}")
             if nuevo_estado != t["estado"]:
-                if st.button("Actualizar estado", key=f"btn_estado_{t['id']}"):
+                if st.button("Actualizar estado", key=f"btn_estado_{t['id']}", icon=":material/sync:"):
                     db.actualizar_estado(t["id"], nuevo_estado)
                     st.session_state.toast_msg = f"Estado actualizado a: {nuevo_estado}"
-                    st.session_state.toast_icon = "🔄"
+                    st.session_state.toast_icon = ":material/sync:"
                     st.rerun()
         with col_cobro:
             if t["estado"] == "entregado" and t["precio"]:
                 st.markdown(f'<p style="font-weight:600;color:#15803D;margin-bottom:8px">Cobrar ${t["precio"]:,.0f}</p>', unsafe_allow_html=True)
-                if st.button("✅ Marcar como cobrado", key=f"cobrar_{t['id']}"):
+                if st.button("Marcar como cobrado", key=f"cobrar_{t['id']}", icon=":material/paid:"):
                     db.registrar_pago(t["id"], t["precio"], date.today())
                     st.session_state.toast_msg= f"Pago registrado exitosamente"
-                    st.session_state.toast_icon = "💰"
+                    st.session_state.toast_icon = ":material/paid:"
                     st.rerun()
         with col_pdf:
             st.write("")
             mats = db.obtener_materiales(t["id"])
-            pdf_bytes = pdfs.generar_ot(t, mats if mats else None)
-            st.download_button("📄 Descargar OT PDF", data=pdf_bytes,
+            pdf_bytes = pdfs.generar_ot(t, mats if mats else None, anonimizar=modo_anonimo_activo())
+            st.download_button("Descargar OT PDF", data=pdf_bytes, icon=":material/download:",
                 file_name=f"OT-{t['id']:04d}.pdf", mime="application/pdf", key=f"pdf_{t['id']}")
         
         with col_delete:
             st.write("")
-            with st.popover("🗑️ Eliminar OT"):
+            with st.popover("Eliminar OT", icon=":material/delete:"):
                 st.warning("¿Seguro que deseas borrar esta orden de trabajo?")
-                if st.button("Confirmar eliminación", key=f"confirm_del_{t['id']}"):
+                if st.button("Confirmar eliminación", key=f"confirm_del_{t['id']}", icon=":material/delete_forever:"):
                     db.eliminar_trabajo(t["id"])
                     st.session_state.detalle_id = None
-                    st.session_state.toast_msg= f"Material eliminado"
-                    st.session_state.toast_icon = "🗑️"
+                    st.session_state.toast_msg= f"Orden eliminada"
+                    st.session_state.toast_icon = ":material/delete:"
                     st.rerun()
 
     with tab_mat:
@@ -423,8 +628,12 @@ def vista_detalle(trabajo_id):
                 c2.write(f"{m['cantidad']:g}" if m["cantidad"] is not None else "—")
                 c3.write(m["unidad"] or "—")
                 c4.write(f"${m['costo']:,.0f}" if m["costo"] else "—")
-                if c5.button("🗑", key=f"del_{m['id']}"): db.eliminar_material(m["id"]); st.rerun()
-            st.markdown(f'<div style="text-align:right;font-weight:700;color:#1E3A5F;margin-top:8px">Total: ${total:,.0f}</div>', unsafe_allow_html=True)
+                if c5.button("Eliminar", key=f"del_{m['id']}", icon=":material/delete:"):
+                    db.eliminar_material(m["id"])
+                    st.session_state.toast_msg = "Material eliminado."
+                    st.session_state.toast_icon = ":material/delete:"
+                    st.rerun()
+            st.markdown(f'<div style="text-align:right;font-weight:700;color:var(--sc-navy);margin-top:8px">Total: ${total:,.0f}</div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="empty-state">Sin materiales registrados.</div>', unsafe_allow_html=True)
         st.divider()
@@ -434,7 +643,11 @@ def vista_detalle(trabajo_id):
             uni = c3.selectbox("Unidad", ["g","ml","unidad","kit","otro"])
             cos = c4.number_input("Costo ($)", min_value=0, step=500)
             if st.form_submit_button("Agregar"):
-                if nom.strip(): db.agregar_material(t["id"], nom, cant, uni, cos); st.rerun()
+                if nom.strip():
+                    db.agregar_material(t["id"], nom, cant, uni, cos)
+                    st.session_state.toast_msg = f"«{nom}» agregado a la orden."
+                    st.session_state.toast_icon = ":material/check_circle:"
+                    st.rerun()
                 else: st.error("El nombre no puede estar vacío.")
 
     with tab_edit:
@@ -445,7 +658,12 @@ def vista_detalle(trabajo_id):
         with st.form(f"form_editar_{t['id']}", clear_on_submit=False):
             c1,c2 = st.columns(2)
             en = c1.text_input("Nombre del trabajo", value=t["nombre"] or "")
-            ep = c2.text_input("Paciente", value=t["paciente"] or "")
+            if modo_anonimo_activo():
+                c2.text_input("Paciente (protegido — Ley 20.584)", value=mostrar_paciente(t["paciente"]), disabled=True)
+                c2.caption("Desbloquea el modo administrador para editar el nombre del paciente.")
+                ep = t["paciente"] or ""
+            else:
+                ep = c2.text_input("Paciente", value=t["paciente"] or "")
             idx_t = db.TIPOS_TRABAJO.index(t["tipo_trabajo"]) if t["tipo_trabajo"] in db.TIPOS_TRABAJO else 0
             et = st.selectbox("Tipo de trabajo", db.TIPOS_TRABAJO, index=idx_t)
             ed = st.text_area("Descripción", value=t["descripcion"] or "", height=80)
@@ -455,11 +673,13 @@ def vista_detalle(trabajo_id):
             idx_s = db.ESTADOS.index(t["estado"]) if t["estado"] in db.ESTADOS else 0
             es_sel = st.selectbox("Estado", db.ESTADOS, format_func=lambda x: ESTADO_LABELS.get(x, x), index=idx_s)
             eno = st.text_input("Notas internas", value=t["notas"] or "")
-            if st.form_submit_button("💾 Guardar cambios"):
+            if st.form_submit_button("Guardar cambios", icon=":material/save:"):
                 db.actualizar_trabajo(trabajo_id=t["id"], nombre=en, paciente=ep,
                     tipo_trabajo=et, descripcion=ed, fecha_entrega=ef,
                     precio=epr, estado=es_sel, notas=eno)
-                st.success("Orden actualizada."); st.rerun()
+                st.session_state.toast_msg = "Orden actualizada."
+                st.session_state.toast_icon = ":material/check_circle:"
+                st.rerun()
 
 
 # ── ROUTING ────────────────────────────────────────────────────────────────────
@@ -467,7 +687,7 @@ if st.session_state.detalle_id is not None:
     vista_detalle(st.session_state.detalle_id)
 
 elif busqueda.strip():
-    st.markdown(f'<h2 style="color:#1E3A5F;margin-bottom:.5rem">Resultados para «{busqueda}»</h2>', unsafe_allow_html=True)
+    st.markdown(f'<h2 style="color:var(--sc-navy);margin-bottom:.5rem">Resultados para «{busqueda}»</h2>', unsafe_allow_html=True)
     resultados = db.buscar_trabajos(busqueda)
     if resultados:
         st.caption(f"{len(resultados)} orden(es) encontrada(s)")
@@ -475,7 +695,7 @@ elif busqueda.strip():
     else:
         st.markdown('<div class="empty-state">No se encontraron órdenes.</div>', unsafe_allow_html=True)
 
-elif pagina == "📊 Dashboard":
+elif pagina == "Dashboard":
     hoy = date.today()
     trabajos_activos = db.obtener_trabajos_activos()
     atrasados = [t for t in trabajos_activos if es_atrasado(t)]
@@ -483,7 +703,7 @@ elif pagina == "📊 Dashboard":
     deudas = db.deuda_por_cliente()
 
     st.markdown(
-        f'<h1 style="color:#1E3A5F;font-size:24px;font-weight:700;margin-bottom:2px">Buenos días 👋</h1>'
+        f'<h1 style="color:var(--sc-navy);font-size:24px;font-weight:700;margin-bottom:2px">Buenos días</h1>'
         f'<p style="color:#94A3B8;font-size:13px;margin-bottom:1.25rem">'
         f'{DIAS_ES[hoy.weekday()].capitalize()} {hoy.day} de {MESES_FULL[hoy.month-1]} de {hoy.year}</p>',
         unsafe_allow_html=True,
@@ -512,7 +732,7 @@ elif pagina == "📊 Dashboard":
     with col_main:
         st.markdown('<div class="section-label">Órdenes activas</div>', unsafe_allow_html=True)
         if not trabajos_activos:
-            st.markdown('<div class="empty-state">✓ Sin órdenes activas.</div>', unsafe_allow_html=True)
+            st.markdown('<div class="empty-state">Sin órdenes activas.</div>', unsafe_allow_html=True)
         else:
             for t in trabajos_activos: fila_trabajo(t)
     with col_side:
@@ -527,11 +747,11 @@ elif pagina == "📊 Dashboard":
         else:
             st.markdown('<div style="color:#16A34A;font-size:13px;padding:8px 12px;background:#F0FDF4;border-radius:8px;border:1px solid #BBF7D0">✓ Sin deudas</div>', unsafe_allow_html=True)
 
-elif pagina == "➕ Nueva orden":
-    st.markdown('<h2 style="color:#1E3A5F;margin-bottom:1rem">Nueva orden de trabajo</h2>', unsafe_allow_html=True)
+elif pagina == "Nueva orden":
+    st.markdown('<h2 style="color:var(--sc-navy);margin-bottom:1rem">Nueva orden de trabajo</h2>', unsafe_allow_html=True)
     clientes = db.obtener_clientes()
     if not clientes:
-        st.warning("Primero agrega un cliente en 👥 Dentistas.")
+        st.warning("Primero agrega un cliente en Dentistas.")
     else:
         opciones = {c["nombre"]: c["id"] for c in clientes}
         with st.form("form_nueva_orden", clear_on_submit=True):
@@ -549,8 +769,8 @@ elif pagina == "➕ Nueva orden":
             precio = c7.number_input("Precio ($)", min_value=0, step=1000, value=0)
             notas  = c8.text_input("Notas internas (opcional)")
             foto   = st.file_uploader("Foto del trabajo (opcional)", type=["jpg","jpeg","png"])
-            confidencial = st.checkbox("🔒 Ocultar nombre del dentista (trabajo subcontratado)")
-            if st.form_submit_button("💾 Guardar orden"):
+            confidencial = st.checkbox("Ocultar nombre del dentista (trabajo subcontratado)")
+            if st.form_submit_button("Guardar orden", icon=":material/save:"):
                 notas_final = ("[confidencial] " + notas).strip() if confidencial else notas
                 tid = db.agregar_trabajo(
                     cliente_id=opciones[cliente_nombre], nombre=nombre_trabajo,
@@ -561,34 +781,54 @@ elif pagina == "➕ Nueva orden":
                     db.guardar_foto(tid, foto.read(), foto.name.rsplit(".",1)[-1].lower())
                 st.session_state.detalle_id = tid
                 st.session_state.toast_msg= f"¡Orden de trabajo creada con éxito!"
-                st.session_state.toast_icon = "🎉"
+                st.session_state.toast_icon = ":material/check_circle:"
                 st.rerun()
 
-elif pagina == "👥 Dentistas":
-    st.markdown('<h2 style="color:#1E3A5F;margin-bottom:1rem">Dentistas / Clientes</h2>', unsafe_allow_html=True)
-    with st.expander("➕ Agregar nuevo dentista"):
+elif pagina == "Dentistas":
+    st.markdown('<h2 style="color:var(--sc-navy);margin-bottom:1rem">Dentistas / Clientes</h2>', unsafe_allow_html=True)
+
+    if st.session_state.get("cliente_nuevo"):
+        cn = st.session_state.cliente_nuevo
+        st.markdown(
+            f'<div style="background:var(--sc-teal-tint);border:1px solid var(--sc-teal);border-radius:8px;'
+            f'padding:.75rem 1rem;margin-bottom:1rem">'
+            f'<strong style="color:var(--sc-navy)">Cliente «{cn["nombre"]}» agregado correctamente.</strong>'
+            f'<div style="font-size:12px;color:#475569;margin-top:4px">Copia este link y envíaselo — solo esta clínica puede usarlo:</div>'
+            f'</div>', unsafe_allow_html=True,
+        )
+        st.code(cn["link"], language=None)
+        if st.button("Entendido, ocultar este mensaje", icon=":material/close:"):
+            del st.session_state.cliente_nuevo
+            st.rerun()
+        st.markdown('<div style="margin-bottom:.5rem"></div>', unsafe_allow_html=True)
+
+    with st.expander("Agregar nuevo dentista", icon=":material/person_add:"):
         with st.form("form_cliente", clear_on_submit=True):
             c1,c2 = st.columns(2)
             nombre   = c1.text_input("Nombre del dentista o clínica")
             telefono = c2.text_input("Teléfono (opcional)")
             notas    = st.text_input("Notas (opcional)")
-            if st.form_submit_button("Guardar cliente"):
+            if st.form_submit_button("Guardar cliente", icon=":material/person_add:"):
                 if nombre.strip():
                     token = db.agregar_cliente(nombre, telefono, notas)
-                    st.success(f"Cliente **{nombre}** agregado.")
-                    st.info(f"Link del portal: `{PORTAL_BASE}/?token={token}`")
+                    st.session_state.cliente_nuevo = {
+                        "nombre": nombre,
+                        "link": f"{PORTAL_BASE}/?token={token}",
+                    }
+                    st.session_state.toast_msg = f"Cliente «{nombre}» agregado."
+                    st.session_state.toast_icon = ":material/person_add:"
                     st.rerun()
                 else: st.error("El nombre no puede estar vacío.")
     st.markdown('<div class="section-label">Dentistas registrados</div>', unsafe_allow_html=True)
     for c in db.obtener_clientes():
-        with st.expander(f"🦷  {c['nombre']}" + (f"  ·  {c['telefono']}" if c["telefono"] else "")):
+        with st.expander(f"{c['nombre']}" + (f"  ·  {c['telefono']}" if c["telefono"] else ""), icon=":material/medical_services:"):
             if c["notas"]: st.caption(c["notas"])
             st.markdown("**Link del portal:**")
             st.code(f"{PORTAL_BASE}/?token={c['token']}", language=None)
             st.caption("Mándale este link. Solo esta clínica puede usarlo.")
 
-elif pagina == "📋 Historial":
-    st.markdown('<h2 style="color:#1E3A5F;margin-bottom:1rem">Historial de órdenes</h2>', unsafe_allow_html=True)
+elif pagina == "Historial":
+    st.markdown('<h2 style="color:var(--sc-navy);margin-bottom:1rem">Historial de órdenes</h2>', unsafe_allow_html=True)
     clientes = db.obtener_clientes()
     c1,c2 = st.columns(2)
     filtro        = c1.selectbox("Cliente", ["Todos"] + [c["nombre"] for c in clientes])
@@ -602,8 +842,8 @@ elif pagina == "📋 Historial":
         st.caption(f"{len(trabajos)} orden(es)")
         for t in trabajos: fila_trabajo(t)
 
-elif pagina == "💰 Cobros":
-    st.markdown('<h2 style="color:#1E3A5F;margin-bottom:1rem">Órdenes de cobro mensual</h2>', unsafe_allow_html=True)
+elif pagina == "Cobros":
+    st.markdown('<h2 style="color:var(--sc-navy);margin-bottom:1rem">Órdenes de cobro mensual</h2>', unsafe_allow_html=True)
     clientes = db.obtener_clientes()
     if not clientes:
         st.info("No hay clientes registrados.")
@@ -628,26 +868,28 @@ elif pagina == "💰 Cobros":
             st.markdown('<div class="section-label">Detalle</div>', unsafe_allow_html=True)
             for t in trabajos_mes:
                 badge = BADGE_ESTADO.get(t["estado"],"")
-                precio_s = f'<b style="color:#1E3A5F">${t["precio"]:,.0f}</b>' if t["precio"] else "—"
+                precio_s = f'<b style="color:var(--sc-navy)">${t["precio"]:,.0f}</b>' if t["precio"] else "—"
                 st.markdown(
                     f'<div style="background:white;border:1px solid #E2E8F0;border-radius:8px;padding:10px 14px;'
                     f'margin-bottom:6px;display:flex;align-items:center;gap:12px">'
-                    f'<span style="font-weight:700;color:#1E3A5F;font-size:13px;min-width:72px">{db.numero_ot(t["id"])}</span>'
+                    f'<span style="font-weight:700;color:var(--sc-navy);font-size:13px;min-width:72px">{db.numero_ot(t["id"])}</span>'
                     f'<span style="font-size:13px;flex:1">{t["nombre"] or t["tipo_trabajo"]}</span>'
-                    f'<span style="color:#94A3B8;font-size:12px">{t["paciente"] or "—"}</span>'
+                    f'<span style="color:#94A3B8;font-size:12px">{mostrar_paciente(t["paciente"])}</span>'
                     f'<span style="margin-left:auto;display:flex;gap:8px;align-items:center">{precio_s}{badge}</span>'
                     f'</div>', unsafe_allow_html=True)
             st.divider()
             mes_label = f"{MESES_ES[mes_sel]} {anio_sel}"
-            pdf_bytes = pdfs.generar_cobro(cliente_sel, trabajos_mes, mes_label)
-            st.download_button(f"📄 Descargar cobro — {cliente_sel} — {mes_label}",
+            pdf_bytes = pdfs.generar_cobro(cliente_sel, trabajos_mes, mes_label, anonimizar=modo_anonimo_activo())
+            if modo_anonimo_activo():
+                st.caption("Este PDF se generará con los nombres de pacientes protegidos (Ley 20.584). Desbloquea el modo administrador para incluir la identidad completa.")
+            st.download_button(f"Descargar cobro — {cliente_sel} — {mes_label}",
                 data=pdf_bytes,
                 file_name=f"cobro_{cliente_sel.replace(' ','_')}_{anio_sel}_{mes_sel:02d}.pdf",
-                mime="application/pdf")
+                mime="application/pdf", icon=":material/download:")
 
 # ── PERFIL ─────────────────────────────────────────────────────────────────────
-elif pagina == "⚙️ Perfil":
-    st.markdown('<h2 style="color:#1E3A5F;margin-bottom:.25rem">Perfil del laboratorio</h2>', unsafe_allow_html=True)
+elif pagina == "Perfil":
+    st.markdown('<h2 style="color:var(--sc-navy);margin-bottom:.25rem">Perfil del laboratorio</h2>', unsafe_allow_html=True)
     st.caption("Los cambios se guardan en el archivo .env y se reflejan de inmediato en el sistema y en los PDFs.")
 
     _cfg = cargar()
@@ -678,24 +920,60 @@ elif pagina == "⚙️ Perfil":
         logo_path     = c9.text_input("Archivo logo laboratorio", value=_cfg["LOGO_PATH"])
         logo_app_path = c10.text_input("Archivo logo Sincrodent", value=_cfg["LOGO_APP_PATH"])
 
-        if st.form_submit_button("💾 Guardar cambios"):
-            guardar_todo({
-                "NOMBRE_LAB":     nombre_lab,
-                "TELEFONO_LAB":   telefono,
-                "EMAIL_LAB":      email,
-                "DIRECCION_LAB":  direccion,
-                "BANCO":          banco,
-                "TIPO_CUENTA":    tipo_cuenta,
-                "NUMERO_CUENTA":  num_cuenta,
-                "RUT_LAB":        rut,
-                "NOMBRE_TITULAR": titular,
-                "PORTAL_BASE":    portal_base,
-                "LOGO_PATH":      logo_path,
-                "LOGO_APP_PATH":  logo_app_path,
-            })
-            st.session_state.toast_msg= f"Configuración guardada correctamente"
-            st.session_state.toast_icon = "⚙️"
-            st.rerun()
+        st.markdown('<div class="section-label">Tipo de entidad y privacidad de pacientes (Ley 20.584)</div>', unsafe_allow_html=True)
+        st.caption(
+            "Si tu laboratorio es una institución/entidad pública, el sistema oculta por defecto "
+            "el nombre de los pacientes (solo iniciales) en toda la app y en los PDF, salvo con el "
+            "modo administrador desbloqueado."
+        )
+        tipo_entidad_idx = 1 if _cfg["TIPO_ENTIDAD"] == "publica" else 0
+        tipo_entidad_label = st.radio(
+            "Tipo de entidad",
+            ["Laboratorio privado", "Institución / entidad pública"],
+            index=tipo_entidad_idx,
+        )
+        es_publica_sel = tipo_entidad_label.startswith("Institución")
+
+        nueva_pass1, nueva_pass2 = "", ""
+        if es_publica_sel:
+            c11, c12 = st.columns(2)
+            label_pw = "Nueva contraseña de administrador" if _cfg["ADMIN_PASSWORD_HASH"] else "Define una contraseña de administrador *"
+            nueva_pass1 = c11.text_input(label_pw, type="password", help="Déjala en blanco para no cambiarla.")
+            nueva_pass2 = c12.text_input("Repite la contraseña", type="password")
+
+        if st.form_submit_button("Guardar cambios", icon=":material/save:"):
+            errores_perfil = []
+            if es_publica_sel and not _cfg["ADMIN_PASSWORD_HASH"] and not nueva_pass1:
+                errores_perfil.append("Como entidad pública, debes definir una contraseña de administrador.")
+            if nueva_pass1 and nueva_pass1 != nueva_pass2:
+                errores_perfil.append("Las contraseñas no coinciden.")
+            if nueva_pass1 and len(nueva_pass1) < 4:
+                errores_perfil.append("La contraseña de administrador debe tener al menos 4 caracteres.")
+
+            if errores_perfil:
+                for e in errores_perfil:
+                    st.error(e)
+            else:
+                guardar_todo({
+                    "NOMBRE_LAB":     nombre_lab,
+                    "TELEFONO_LAB":   telefono,
+                    "EMAIL_LAB":      email,
+                    "DIRECCION_LAB":  direccion,
+                    "BANCO":          banco,
+                    "TIPO_CUENTA":    tipo_cuenta,
+                    "NUMERO_CUENTA":  num_cuenta,
+                    "RUT_LAB":        rut,
+                    "NOMBRE_TITULAR": titular,
+                    "PORTAL_BASE":    portal_base,
+                    "LOGO_PATH":      logo_path,
+                    "LOGO_APP_PATH":  logo_app_path,
+                    "TIPO_ENTIDAD":   "publica" if es_publica_sel else "privada",
+                })
+                if nueva_pass1:
+                    establecer_password_admin(nueva_pass1)
+                st.session_state.toast_msg= f"Configuración guardada correctamente"
+                st.session_state.toast_icon = ":material/settings:"
+                st.rerun()
 
     # Vista previa logos actuales
     st.markdown('<div class="section-label">Vista previa de logos</div>', unsafe_allow_html=True)
