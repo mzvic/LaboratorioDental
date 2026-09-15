@@ -1,5 +1,6 @@
 # portal.py — Portal exclusivo para clínicas/dentistas.
 import streamlit as st
+import streamlit.components.v1 as components
 from datetime import date, timedelta
 import database as db
 import os

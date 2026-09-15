@@ -5,3 +5,5 @@ __pycache__/
 instance.env
 .env
 config.py
+nohup.out
+logo_lab.jpeg
