@@ -16,6 +16,19 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+components.html(
+    """
+    <head>
+        <meta property="og:title" content="Sincrodent — Laboratorio Dental" />
+        <meta property="og:description" content="Sistema de gestión y laboratorio dental Sincrodent." />
+        <meta property="og:image" content="https://sincrodent.com/Sincrodent.png" />
+        <meta property="og:image:secure_url" content="https://sincrodent.com/Sincrodent.png" />
+        <meta property="og:type" content="website" />
+    </head>
+    """,
+    height=0,
+)
+
 db.inicializar_db()
 
 if os.environ.get("SINCRODENT_DEMO") == "1":

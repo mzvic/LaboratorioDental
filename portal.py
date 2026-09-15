@@ -16,7 +16,18 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="collapsed",
 )
-
+components.html(
+    """
+    <head>
+        <meta property="og:title" content="Sincrodent — Portal del Dentista" />
+        <meta property="og:description" content="Gestiona y envía tus órdenes de trabajo al laboratorio dental y realiza el seguimiento en tiempo real." />
+        <meta property="og:image" content="https://sincrodent.com/Sincrodent.png" />
+        <meta property="og:image:secure_url" content="https://sincrodent.com/Sincrodent.png" />
+        <meta property="og:type" content="website" />
+    </head>
+    """,
+    height=0,
+)
 db.inicializar_db()
 
 if _cfg["SETUP_COMPLETO"] != "1":

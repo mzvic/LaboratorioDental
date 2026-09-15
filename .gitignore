@@ -2,3 +2,6 @@ data/laboratorio.db
 fotos/
 __pycache__/
 *.pyc
+instance.env
+.env
+config.py
