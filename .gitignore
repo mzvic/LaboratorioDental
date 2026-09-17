@@ -7,3 +7,4 @@ instance.env
 config.py
 nohup.out
 logo_lab.jpeg
+*.env

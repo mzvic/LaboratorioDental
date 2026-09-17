@@ -5,7 +5,7 @@ from datetime import date, timedelta
 import database as db
 import os
 from config import cargar
-
+from notificaciones import notificar_orden_nueva
 _cfg = cargar()
 NOMBRE_LABORATORIO = _cfg["NOMBRE_LAB"] or "Laboratorio Dental"
 LOGO_LAB_PATH = _cfg["LOGO_PATH"]
@@ -282,6 +282,10 @@ if enviado:
             db.guardar_foto(trabajo_id, foto.read(), ext)
 
         ot = db.numero_ot(trabajo_id)
+        try:
+            notificar_orden_nueva(cliente["nombre"], tipo, nombre_trabajo, ot)
+        except Exception:
+            pass
         st.success(f"Orden enviada correctamente a {NOMBRE_LABORATORIO}. Su número de seguimiento asignado es **{ot}**.", icon=":material/check_circle:")
         st.info(f"El laboratorio revisará su solicitud y confirmará la recepción para la fecha estimada del **{fecha_entrega.strftime('%d/%m/%Y')}**.")
             
