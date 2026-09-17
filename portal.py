@@ -1,11 +1,10 @@
 # portal.py — Portal exclusivo para clínicas/dentistas.
 import streamlit as st
-import streamlit.components.v1 as components
 from datetime import date, timedelta
 import database as db
 import os
 from config import cargar
-from notificaciones import notificar_orden_nueva
+
 _cfg = cargar()
 NOMBRE_LABORATORIO = _cfg["NOMBRE_LAB"] or "Laboratorio Dental"
 LOGO_LAB_PATH = _cfg["LOGO_PATH"]
@@ -17,18 +16,7 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="collapsed",
 )
-components.html(
-    """
-    <head>
-        <meta property="og:title" content="Sincrodent — Portal del Dentista" />
-        <meta property="og:description" content="Gestiona y envía tus órdenes de trabajo al laboratorio dental y realiza el seguimiento en tiempo real." />
-        <meta property="og:image" content="https://sincrodent.com/Sincrodent.png" />
-        <meta property="og:image:secure_url" content="https://sincrodent.com/Sincrodent.png" />
-        <meta property="og:type" content="website" />
-    </head>
-    """,
-    height=0,
-)
+
 db.inicializar_db()
 
 if _cfg["SETUP_COMPLETO"] != "1":
@@ -158,13 +146,11 @@ with col_logo_lab:
 
 with col_titulo:
     st.markdown(
-        "<a href='https://sincrodent.com' target='_blank' style='text-decoration: none; color: inherit; display: block;'>"
-        "<div style='text-align: center; cursor: pointer;'>"
+        "<div style='text-align: center;'>"
         "<h3 class='portal-header-title sc-brand' style='margin-bottom:0; font-size:21px; line-height: 1.2;'>"
         "<span style='color:var(--sc-navy)'>Sincro</span><span style='color:var(--sc-teal)'>dent</span></h3>"
         "<p class='portal-header-sub' style='color:#94A3B8; font-size:11px; margin:2px 0 0 0;'>Portal de Solicitudes para Clínicas y Dentistas</p>"
-        "</div>"
-        "</a>",
+        "</div>",
         unsafe_allow_html=True
     )
 
@@ -185,6 +171,7 @@ st.markdown(
     f'Complete el formulario a continuación para enviar una nueva orden directamente al laboratorio.</p>',
     unsafe_allow_html=True,
 )
+
 st.markdown('<p style="font-size:0.85rem; color:#64748B;">Los campos marcados con <span style="color:var(--sc-teal); font-weight:bold;">*</span> son obligatorios.</p>', unsafe_allow_html=True)
 
 with st.form("form_portal", clear_on_submit=True):
@@ -282,10 +269,17 @@ if enviado:
             db.guardar_foto(trabajo_id, foto.read(), ext)
 
         ot = db.numero_ot(trabajo_id)
+
         try:
-            notificar_orden_nueva(cliente["nombre"], tipo, nombre_trabajo, ot)
-        except Exception:
-            pass
+            from notificaciones import notificar_orden_nueva
+            enviado, error = notificar_orden_nueva(cliente["nombre"], tipo, nombre_trabajo, ot)
+            if not enviado and error:
+                with open("notif_errores.log", "a") as f:
+                    f.write(f"{date.today()} — {error}\n")
+        except Exception as e:
+            with open("notif_errores.log", "a") as f:
+                f.write(f"{date.today()} — {e}\n")
+
         st.success(f"Orden enviada correctamente a {NOMBRE_LABORATORIO}. Su número de seguimiento asignado es **{ot}**.", icon=":material/check_circle:")
         st.info(f"El laboratorio revisará su solicitud y confirmará la recepción para la fecha estimada del **{fecha_entrega.strftime('%d/%m/%Y')}**.")
             
