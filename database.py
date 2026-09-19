@@ -6,6 +6,16 @@ from datetime import date
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", "laboratorio.db")
 FOTOS_DIR = os.path.join(os.path.dirname(__file__), "fotos")
 
+# Adjuntos permitidos en una orden: fotos clínicas + archivos de escaneo intraoral
+# (STL/PLY/OBJ son los formatos de exportación más comunes de Trios, iTero, Medit, etc.)
+EXTENSIONES_ADJUNTO = ["jpg", "jpeg", "png", "stl", "ply", "obj", "zip", "pdf"]
+EXTENSIONES_IMAGEN = ["jpg", "jpeg", "png"]
+
+
+def es_imagen(ruta_o_extension):
+    ext = ruta_o_extension.rsplit(".", 1)[-1].lower() if "." in ruta_o_extension else ruta_o_extension.lower()
+    return ext in EXTENSIONES_IMAGEN
+
 ESTADOS = ["pendiente", "en_proceso", "listo", "entregado", "cobrado"]
 
 TIPOS_TRABAJO = [
@@ -96,6 +106,17 @@ def inicializar_db():
             unidad      TEXT,
             costo       REAL,
             fecha       TEXT NOT NULL,
+            FOREIGN KEY (trabajo_id) REFERENCES trabajos(id)
+        )
+    """)
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS adjuntos (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            trabajo_id       INTEGER NOT NULL,
+            ruta             TEXT NOT NULL,
+            nombre_original  TEXT,
+            fecha_subida     TEXT,
             FOREIGN KEY (trabajo_id) REFERENCES trabajos(id)
         )
     """)
@@ -259,6 +280,9 @@ def actualizar_estado(trabajo_id, nuevo_estado):
 
 
 def guardar_foto(trabajo_id, archivo_bytes, extension):
+    """Función legada: mantiene compatibilidad con órdenes creadas antes de
+    que existiera la tabla `adjuntos` (guardaban un único archivo por orden).
+    Las órdenes nuevas usan agregar_adjunto(), que permite varios archivos."""
     os.makedirs(FOTOS_DIR, exist_ok=True)
     ruta = os.path.join(FOTOS_DIR, f"{trabajo_id}.{extension}")
     with open(ruta, "wb") as f:
@@ -268,6 +292,45 @@ def guardar_foto(trabajo_id, archivo_bytes, extension):
     conn.commit()
     conn.close()
     return ruta
+
+
+def agregar_adjunto(trabajo_id, archivo_bytes, extension, nombre_original):
+    """Guarda un archivo adicional (foto o escaneo) para una orden. Una orden
+    puede tener varios adjuntos — a diferencia de guardar_foto(), no reemplaza
+    nada anterior."""
+    os.makedirs(FOTOS_DIR, exist_ok=True)
+    nombre_archivo = f"{trabajo_id}_{uuid.uuid4().hex[:8]}.{extension}"
+    ruta = os.path.join(FOTOS_DIR, nombre_archivo)
+    with open(ruta, "wb") as f:
+        f.write(archivo_bytes)
+    conn = conectar()
+    conn.execute(
+        "INSERT INTO adjuntos (trabajo_id, ruta, nombre_original, fecha_subida) VALUES (?, ?, ?, ?)",
+        (trabajo_id, ruta, nombre_original, date.today().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+    return ruta
+
+
+def obtener_adjuntos(trabajo_id):
+    """Lista todos los adjuntos nuevos de una orden (no incluye foto_path legado)."""
+    conn = conectar()
+    filas = conn.execute(
+        "SELECT * FROM adjuntos WHERE trabajo_id = ? ORDER BY id", (trabajo_id,)
+    ).fetchall()
+    conn.close()
+    return filas
+
+
+def eliminar_adjunto(adjunto_id):
+    conn = conectar()
+    row = conn.execute("SELECT ruta FROM adjuntos WHERE id = ?", (adjunto_id,)).fetchone()
+    if row and os.path.exists(row["ruta"]):
+        os.remove(row["ruta"])
+    conn.execute("DELETE FROM adjuntos WHERE id = ?", (adjunto_id,))
+    conn.commit()
+    conn.close()
 
 
 # ── PAGOS ─────────────────────────────────────────────────────────────────────
@@ -372,11 +435,15 @@ def trabajos_por_cliente_mes(cliente_id, anio, mes):
     conn.close()
     return rows
 def eliminar_trabajo(trabajo_id):
-    """Elimina una OT y todos sus datos asociados (pagos, materiales, foto)."""
+    """Elimina una OT y todos sus datos asociados (pagos, materiales, adjuntos)."""
     conn = conectar()
     row = conn.execute("SELECT foto_path FROM trabajos WHERE id = ?", (trabajo_id,)).fetchone()
     if row and row["foto_path"] and os.path.exists(row["foto_path"]):
         os.remove(row["foto_path"])
+    for adj in conn.execute("SELECT ruta FROM adjuntos WHERE trabajo_id = ?", (trabajo_id,)).fetchall():
+        if os.path.exists(adj["ruta"]):
+            os.remove(adj["ruta"])
+    conn.execute("DELETE FROM adjuntos WHERE trabajo_id = ?", (trabajo_id,))
     conn.execute("DELETE FROM materiales WHERE trabajo_id = ?", (trabajo_id,))
     conn.execute("DELETE FROM pagos WHERE trabajo_id = ?", (trabajo_id,))
     conn.execute("DELETE FROM trabajos WHERE id = ?", (trabajo_id,))

@@ -187,7 +187,11 @@ with st.form("form_portal", clear_on_submit=True):
 
     # ── Especificaciones técnicas ──
     st.markdown('<div class="section-label">Especificaciones técnicas</div>', unsafe_allow_html=True)
+
+    PIEZAS_FDI = [str(n) for n in list(range(11, 19)) + list(range(21, 29)) + list(range(31, 39)) + list(range(41, 49))]
+
     col1, col2 = st.columns(2)
+    arcada = col1.selectbox("Arcada *", ["Superior", "Inferior", "Ambas"])
 
     GUIA_VITA = [
         "A1", "A2", "A3", "A3.5", "A4",
@@ -196,10 +200,15 @@ with st.form("form_portal", clear_on_submit=True):
         "D2", "D3", "D4",
         "Otro / No aplica",
     ]
-    color = col1.selectbox("Color (guía VITA) *", GUIA_VITA)
-    diente = col2.text_input("Número(s) de pieza(s) *", placeholder="Ej: 14, 15-17")
+    color = col2.selectbox("Color (guía VITA) *", GUIA_VITA)
 
-    material = st.selectbox("Material preferido", [
+    piezas = st.multiselect(
+        "Pieza(s) dentaria(s) — numeración FDI *", PIEZAS_FDI,
+        placeholder="Selecciona una o más piezas",
+    )
+
+    col3, col4 = st.columns(2)
+    material = col3.selectbox("Material preferido", [
         "Sin preferencia",
         "Metal-porcelana",
         "Zirconio",
@@ -207,10 +216,22 @@ with st.form("form_portal", clear_on_submit=True):
         "Cromo-cobalto",
         "Otro",
     ])
+    oclusion = col4.selectbox("Tipo de oclusión / articulador", [
+        "No aplica",
+        "Balanceada",
+        "Canina protegida",
+        "Función de grupo",
+    ])
+    textura = st.selectbox("Textura / acabado superficial", [
+        "No aplica",
+        "Alto brillo",
+        "Satinado",
+        "Texturizado natural",
+    ])
 
     descripcion = st.text_area(
         "Instrucciones adicionales",
-        placeholder="Detalles de oclusión, forma, referencias, etc.",
+        placeholder="Detalles de forma, referencias, casos especiales, etc.",
         height=90,
     )
 
@@ -224,10 +245,11 @@ with st.form("form_portal", clear_on_submit=True):
     )
 
     # ── Foto / archivo adjunto ──
-    st.markdown('<div class="section-label">Fotografía (opcional)</div>', unsafe_allow_html=True)
-    foto = st.file_uploader(
-        "Adjuntar foto del caso (impresión, foto clínica, etc.)",
-        type=["jpg", "jpeg", "png"],
+    st.markdown('<div class="section-label">Fotos o archivos de escaneo (opcional)</div>', unsafe_allow_html=True)
+    fotos = st.file_uploader(
+        "Adjuntar foto(s) clínica(s) o archivo(s) de escaneo intraoral (STL, PLY, OBJ, ZIP, PDF)",
+        type=db.EXTENSIONES_ADJUNTO,
+        accept_multiple_files=True,
     )
 
     st.divider()
@@ -240,15 +262,16 @@ if enviado:
         errores.append("El nombre del paciente es obligatorio.")
     if not nombre_trabajo.strip():
         errores.append("La descripción del trabajo es obligatoria.")
-    if not diente.strip():
-        errores.append("El número de pieza(s) es obligatorio.")
+    if not piezas:
+        errores.append("Debes seleccionar al menos una pieza dentaria.")
 
     if errores:
         for e in errores:
             st.toast(e, icon=":material/error:") # <-- Popup rojo/alerta si hay errores
     else:
         descripcion_completa = (
-            f"Color: {color} | Pieza(s): {diente} | Material: {material}"
+            f"Arcada: {arcada} | Color: {color} | Pieza(s): {', '.join(piezas)} | "
+            f"Material: {material} | Oclusión: {oclusion} | Textura: {textura}"
             + (f"\n{descripcion.strip()}" if descripcion.strip() else "")
         )
 
@@ -264,9 +287,9 @@ if enviado:
             notas         = f"Enviado por portal — {cliente['nombre']}",
         )
 
-        if foto:
-            ext = foto.name.rsplit(".", 1)[-1].lower()
-            db.guardar_foto(trabajo_id, foto.read(), ext)
+        for f in fotos or []:
+            ext = f.name.rsplit(".", 1)[-1].lower()
+            db.agregar_adjunto(trabajo_id, f.read(), ext, f.name)
 
         ot = db.numero_ot(trabajo_id)
 
@@ -327,6 +350,26 @@ else:
             if t["descripcion"]:
                 st.markdown(f"**Detalles:** {t['descripcion']}")
             if t["foto_path"] and os.path.exists(t["foto_path"]):
-                st.image(t["foto_path"], width=200)
+                if db.es_imagen(t["foto_path"]):
+                    st.image(t["foto_path"], width=200)
+                else:
+                    with open(t["foto_path"], "rb") as f:
+                        st.download_button(
+                            f"Descargar archivo adjunto ({os.path.basename(t['foto_path'])})",
+                            data=f.read(), file_name=os.path.basename(t["foto_path"]),
+                            icon=":material/download:", key=f"dl_adj_{t['id']}",
+                        )
+            for adj in db.obtener_adjuntos(t["id"]):
+                if not os.path.exists(adj["ruta"]):
+                    continue
+                if db.es_imagen(adj["ruta"]):
+                    st.image(adj["ruta"], width=200, caption=adj["nombre_original"])
+                else:
+                    with open(adj["ruta"], "rb") as f:
+                        st.download_button(
+                            f"Descargar {adj['nombre_original']}",
+                            data=f.read(), file_name=adj["nombre_original"],
+                            icon=":material/download:", key=f"dl_adj_new_{adj['id']}",
+                        )
 
             st.divider()

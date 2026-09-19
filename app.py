@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 from datetime import date, datetime
 import os
 import database as db
@@ -15,19 +14,6 @@ st.set_page_config(
     page_icon="Sincrodent.png",
     layout="wide",
     initial_sidebar_state="collapsed",
-)
-
-components.html(
-    """
-    <head>
-        <meta property="og:title" content="Sincrodent — Laboratorio Dental" />
-        <meta property="og:description" content="Sistema de gestión y laboratorio dental Sincrodent." />
-        <meta property="og:image" content="https://sincrodent.com/Sincrodent.png" />
-        <meta property="og:image:secure_url" content="https://sincrodent.com/Sincrodent.png" />
-        <meta property="og:type" content="website" />
-    </head>
-    """,
-    height=0,
 )
 
 db.inicializar_db()
@@ -583,12 +569,46 @@ def vista_detalle(trabajo_id):
         if notas_limpias:
             st.caption(notas_limpias)
         if t["foto_path"] and os.path.exists(t["foto_path"]):
-            st.image(t["foto_path"], width=300)
-        foto_nueva = st.file_uploader("Subir / reemplazar foto", type=["jpg","jpeg","png"], key=f"foto_{t['id']}")
-        if foto_nueva:
-            db.guardar_foto(t["id"], foto_nueva.read(), foto_nueva.name.rsplit(".",1)[-1].lower())
-            st.session_state.toast_msg = "Foto guardada."
-            st.session_state.toast_icon = ":material/photo_camera:"
+            if db.es_imagen(t["foto_path"]):
+                st.image(t["foto_path"], width=300)
+            else:
+                with open(t["foto_path"], "rb") as f:
+                    st.download_button(
+                        f"Descargar archivo adjunto ({os.path.basename(t['foto_path'])})",
+                        data=f.read(), file_name=os.path.basename(t["foto_path"]),
+                        icon=":material/download:", key=f"dl_adj_detalle_{t['id']}",
+                    )
+        adjuntos = db.obtener_adjuntos(t["id"])
+        for adj in adjuntos:
+            if not os.path.exists(adj["ruta"]):
+                continue
+            ca, cb = st.columns([5, 1])
+            with ca:
+                if db.es_imagen(adj["ruta"]):
+                    st.image(adj["ruta"], width=300, caption=adj["nombre_original"])
+                else:
+                    with open(adj["ruta"], "rb") as f:
+                        st.download_button(
+                            f"Descargar {adj['nombre_original']}",
+                            data=f.read(), file_name=adj["nombre_original"],
+                            icon=":material/download:", key=f"dl_adj_new_{adj['id']}",
+                        )
+            with cb:
+                if st.button("Eliminar", key=f"del_adj_{adj['id']}", icon=":material/delete:"):
+                    db.eliminar_adjunto(adj["id"])
+                    st.session_state.toast_msg = "Archivo eliminado."
+                    st.session_state.toast_icon = ":material/delete:"
+                    st.rerun()
+
+        fotos_nuevas = st.file_uploader(
+            "Agregar foto(s) o archivo(s) de escaneo", type=db.EXTENSIONES_ADJUNTO,
+            accept_multiple_files=True, key=f"foto_{t['id']}",
+        )
+        if fotos_nuevas:
+            for f in fotos_nuevas:
+                db.agregar_adjunto(t["id"], f.read(), f.name.rsplit(".",1)[-1].lower(), f.name)
+            st.session_state.toast_msg = "Archivo(s) guardado(s)."
+            st.session_state.toast_icon = ":material/upload_file:"
             st.rerun()
 
         st.divider()
@@ -782,7 +802,7 @@ elif pagina == "Nueva orden":
             c7,c8 = st.columns(2)
             precio = c7.number_input("Precio ($)", min_value=0, step=1000, value=0)
             notas  = c8.text_input("Notas internas (opcional)")
-            foto   = st.file_uploader("Foto del trabajo (opcional)", type=["jpg","jpeg","png"])
+            foto   = st.file_uploader("Fotos o archivos de escaneo (opcional)", type=db.EXTENSIONES_ADJUNTO, accept_multiple_files=True)
             confidencial = st.checkbox("Ocultar nombre del dentista (trabajo subcontratado)")
             if st.form_submit_button("Guardar orden", icon=":material/save:"):
                 notas_final = ("[confidencial] " + notas).strip() if confidencial else notas
@@ -791,8 +811,8 @@ elif pagina == "Nueva orden":
                     paciente=paciente, tipo=tipo, descripcion=descripcion,
                     fecha_ingreso=fecha_ingreso, fecha_entrega=fecha_entrega,
                     precio=precio if precio > 0 else None, notas=notas_final)
-                if foto:
-                    db.guardar_foto(tid, foto.read(), foto.name.rsplit(".",1)[-1].lower())
+                for f in foto or []:
+                    db.agregar_adjunto(tid, f.read(), f.name.rsplit(".",1)[-1].lower(), f.name)
                 st.session_state.detalle_id = tid
                 st.session_state.toast_msg= f"¡Orden de trabajo creada con éxito!"
                 st.session_state.toast_icon = ":material/check_circle:"
@@ -934,6 +954,17 @@ elif pagina == "Perfil":
         logo_path     = c9.text_input("Archivo logo laboratorio", value=_cfg["LOGO_PATH"])
         logo_app_path = c10.text_input("Archivo logo Sincrodent", value=_cfg["LOGO_APP_PATH"])
 
+        st.markdown('<div class="section-label">Notificaciones</div>', unsafe_allow_html=True)
+        notif_activo = st.checkbox(
+            "Avisar por correo cuando llegue una orden nueva desde el portal",
+            value=_cfg["NOTIF_EMAIL_ACTIVO"] == "1",
+        )
+        notif_destino = st.text_input(
+            "Correo que recibe el aviso", value=_cfg["NOTIF_EMAIL_DESTINO"],
+            placeholder="Déjalo vacío para usar el correo del laboratorio",
+        )
+        st.caption("El aviso se envía automáticamente desde notificaciones@sincrodent.com — no necesitas configurar ningún servidor de correo.")
+
         st.markdown('<div class="section-label">Tipo de entidad y privacidad de pacientes (Ley 20.584)</div>', unsafe_allow_html=True)
         st.caption(
             "Si tu laboratorio es una institución/entidad pública, el sistema oculta por defecto "
@@ -981,6 +1012,8 @@ elif pagina == "Perfil":
                     "PORTAL_BASE":    portal_base,
                     "LOGO_PATH":      logo_path,
                     "LOGO_APP_PATH":  logo_app_path,
+                    "NOTIF_EMAIL_ACTIVO":  "1" if notif_activo else "0",
+                    "NOTIF_EMAIL_DESTINO": notif_destino,
                     "TIPO_ENTIDAD":   "publica" if es_publica_sel else "privada",
                 })
                 if nueva_pass1:
